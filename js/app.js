@@ -5,6 +5,7 @@ import { vistaCompras } from './views/compras.js';
 import { vistaTraslados } from './views/traslados.js';
 import { vistaFormulacion } from './views/formulacion.js';
 import { vistaVentas } from './views/ventas.js';
+import { vistaConfiguracion } from './views/configuracion.js';
 
 const vistas = {
   inventario: vistaInventario,
@@ -12,6 +13,7 @@ const vistas = {
   traslados: vistaTraslados,
   formulacion: vistaFormulacion,
   ventas: vistaVentas,
+  configuracion: vistaConfiguracion,
 };
 
 const loginView = document.getElementById('login-view');
@@ -34,6 +36,7 @@ function mostrarApp() {
   nav.hidden = false;
   userBox.hidden = false;
   document.getElementById('user-name').textContent = session.usuario?.nombre || session.usuario?.email || '';
+  nav.querySelector('[data-view=configuracion]').hidden = session.usuario?.rol !== 'admin';
   navegar();
 }
 

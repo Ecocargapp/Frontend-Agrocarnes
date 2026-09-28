@@ -1,7 +1,7 @@
 import { api, catalogo, invalidar } from '../api.js';
 import { html, esc, num, cop, fecha, toast, opciones, tabla, badge, datosForm, alEnviar } from '../ui.js';
 
-const ESTADO = { pendiente: 'warn', aceptada: 'ok', rechazada: 'danger', contingencia: 'warn' };
+const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn' };
 
 export async function vistaVentas(root) {
   const [bodegas, clientes] = await Promise.all([catalogo('bodegas'), catalogo('clientes')]);
@@ -45,6 +45,10 @@ export async function vistaVentas(root) {
               <label><span>Número</span><input name="numero_documento" /></label>
             </div>
             <label><span>Correo (para enviar la factura electrónica)</span><input type="email" name="email" /></label>
+            <div class="row">
+              <label><span>Dirección</span><input name="direccion" /></label>
+              <label class="w-sm"><span>Ciudad DANE</span><input name="ciudad_id" value="05001" /></label>
+            </div>
             <div class="row">
               <button type="submit" class="btn-primary">Guardar cliente</button>
               <button type="button" class="btn-secondary" id="btn-cancelar-cli">Cancelar</button>
@@ -120,7 +124,7 @@ export async function vistaVentas(root) {
         { titulo: 'Empresa', campo: 'empresa' },
         { titulo: 'Cliente', render: (v) => esc(v.cliente || 'Consumidor final') },
         { titulo: 'Total', num: true, render: (v) => cop(v.total) },
-        { titulo: 'DIAN', render: (v) => badge(v.estado_dian, ESTADO[v.estado_dian] || '') },
+        { titulo: 'DIAN', render: (v) => badge(v.estado_dian, ESTADO[v.estado_dian] || '') + (v.dian_mensaje && ['error', 'rechazada'].includes(v.estado_dian) ? ` <span class="muted" title="${esc(v.dian_mensaje)}">ⓘ</span>` : '') },
       ],
       filas,
       filaAttrs: (v) => `class="clickable" data-id="${v.id}"`,
@@ -133,7 +137,13 @@ export async function vistaVentas(root) {
     const f = await api(`/ventas/${id}`);
     root.querySelector('#titulo-detalle').textContent = `Factura ${f.consecutivo || ''} · ${f.empresa}`;
     root.querySelector('#detalle').innerHTML = html`
-      <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} · DIAN: ${badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.cufe ? ` · CUFE <span class="mono">${esc(f.cufe)}</span>` : ''}</p>
+      <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} · DIAN: ${badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.arco_factura_id ? ` · Arco #${esc(f.arco_factura_id)}` : ''}</p>
+      ${f.cufe ? `<p class="muted">CUFE: <span class="mono" style="word-break:break-all">${esc(f.cufe)}</span>${f.pdf_url ? ` · <a href="${esc(f.pdf_url)}" target="_blank" rel="noopener">Ver representación gráfica</a>` : ''}</p>` : ''}
+      ${f.dian_mensaje ? `<p class="${['error', 'rechazada'].includes(f.estado_dian) ? 'error' : 'muted'}">${esc(f.dian_mensaje)}</p>` : ''}
+      <p class="row" style="gap:8px">
+        ${['pendiente', 'error', 'rechazada', 'sin_configurar'].includes(f.estado_dian) ? `<button type="button" class="btn-secondary" data-dian="reenviar" data-id="${f.id}">Reintentar envío a la DIAN</button>` : ''}
+        ${f.arco_factura_id && f.estado_dian !== 'aceptada' ? `<button type="button" class="btn-secondary" data-dian="estado" data-id="${f.id}">Actualizar estado</button>` : ''}
+      </p>
       ${tabla({
         columnas: [
           { titulo: 'Producto', campo: 'producto' },
@@ -149,6 +159,16 @@ export async function vistaVentas(root) {
 
   selBodega.addEventListener('change', cargarBodega);
   root.querySelector('#btn-linea').addEventListener('click', agregarLinea);
+  root.querySelector('#detalle').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-dian]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      const r = await api(`/ventas/${btn.dataset.id}/dian${btn.dataset.dian === 'estado' ? '/estado' : ''}`, { method: 'POST' });
+      toast(r.estado === 'aceptada' ? 'Factura aceptada por la DIAN' : `Estado: ${r.estado}${r.mensaje ? ` · ${r.mensaje}` : ''}`, r.estado === 'aceptada' ? 'ok' : '');
+      await Promise.all([cargarLista(), verDetalle(btn.dataset.id)]);
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  });
   root.querySelector('#lista-ventas').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
     if (tr) verDetalle(tr.dataset.id);

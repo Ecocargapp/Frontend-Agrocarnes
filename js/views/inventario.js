@@ -52,8 +52,17 @@ export async function vistaInventario(root) {
                 </select>
               </label>
             </div>
+            <div class="row">
+              <label><span>Código en Arco (ProductoId)</span><input name="arco_producto_id" placeholder="Igual al de Arco" /></label>
+              <label class="w-sm"><span>% imp. incluido</span><input name="impuesto_pct" type="number" step="0.01" min="0" value="0" /></label>
+            </div>
             <button type="submit" class="btn-primary">Crear producto</button>
           </form>
+        </div>
+        <div class="card">
+          <h2>Productos y códigos Arco</h2>
+          <p class="muted">Edita el código y el % de impuesto directamente; se guarda al salir del campo.</p>
+          <div id="lista-productos"></div>
         </div>
       </div>
       <div>
@@ -121,12 +130,37 @@ export async function vistaInventario(root) {
     if (tr) cargarKardex(tr.dataset.producto, tr.dataset.nombre);
   });
 
+  async function cargarProductos() {
+    const productos = await catalogo('productos', true);
+    const nombreEmpresa = (id) => empresas.find((e) => e.id === id)?.nombre || '';
+    root.querySelector('#lista-productos').innerHTML = tabla({
+      columnas: [
+        { titulo: 'Producto', render: (p) => `${esc(p.nombre)} <span class="muted">(${esc(p.unidad_medida)} · ${esc(nombreEmpresa(p.empresa_id))})</span>` },
+        { titulo: 'Código Arco', render: (p) => `<input class="mono" style="width:120px" data-id="${p.id}" data-campo="arco_producto_id" value="${esc(p.arco_producto_id || '')}" placeholder="—" />` },
+        { titulo: '% imp.', render: (p) => `<input class="mono" style="width:70px" type="number" step="0.01" min="0" data-id="${p.id}" data-campo="impuesto_pct" value="${esc(p.impuesto_pct ?? 0)}" />` },
+      ],
+      filas: productos,
+      vacio: 'Todavía no hay productos.',
+    });
+  }
+
+  root.querySelector('#lista-productos').addEventListener('change', async (e) => {
+    const inp = e.target.closest('input[data-id]');
+    if (!inp) return;
+    try {
+      await api(`/productos/${inp.dataset.id}`, { method: 'PATCH', body: { [inp.dataset.campo]: inp.value } });
+      invalidar('productos');
+      toast('Producto actualizado', 'ok');
+    } catch (err) { toast(err.message, 'error'); }
+  });
+
   alEnviar(root.querySelector('#form-producto'), async (e) => {
     const p = await api('/productos', { method: 'POST', body: datosForm(e.target) });
     invalidar('productos');
     e.target.reset();
     toast(`Producto "${p.nombre}" creado`, 'ok');
+    cargarProductos();
   });
 
-  await cargarExistencias();
+  await Promise.all([cargarExistencias(), cargarProductos()]);
 }
