@@ -1,0 +1,73 @@
+/* Agrocarnes — mismo criterio tipográfico que AgroSoft (Archivo + IBM Plex
+   Mono), pero con su propio color de marca para distinguirse a simple vista.
+   Cambia --brand si prefieres otro tono. */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --brand: #b3401f; /* terracota — placeholder, cámbialo si quieres otro */
+  --ink: #1c1a17;
+  --bg: #faf8f6;
+  --border: #e4ddd6;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Archivo', sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: white;
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--brand);
+}
+
+nav button {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+nav button:hover { background: var(--bg); }
+
+main { padding: 24px; max-width: 720px; margin: 0 auto; }
+
+form { display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
+
+label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+
+input {
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+button[type='submit'] {
+  background: var(--brand);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.error { color: #b3261e; font-size: 0.9rem; }
