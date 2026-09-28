@@ -1,5 +1,7 @@
 import { api, catalogo, invalidar } from '../api.js';
-import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, datosForm, alEnviar } from '../ui.js';
+import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar } from '../ui.js';
+
+const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
 export async function vistaCompras(root) {
   const [empresas, bodegas, productos, proveedores] = await Promise.all([
@@ -31,6 +33,18 @@ export async function vistaCompras(root) {
             <div class="row">
               <label><span>N° factura proveedor</span><input name="numero_factura_proveedor" placeholder="Opcional" /></label>
               <label class="w-sm"><span>Fecha</span><input type="date" name="fecha" value="${hoy()}" /></label>
+            </div>
+            <div class="row">
+              <label class="w-sm"><span>Forma de pago</span>
+                <select id="c-forma-pago" name="forma_pago">
+                  <option value="contado">Contado</option>
+                  <option value="credito">Crédito</option>
+                </select>
+              </label>
+              <label id="c-medio-pago-label"><span>Medio de pago</span>
+                <select name="medio_pago">${MEDIOS_PAGO.map((m) => `<option value="${m}"${m === 'transferencia' ? ' selected' : ''}>${esc(m[0].toUpperCase() + m.slice(1))}</option>`).join('')}</select>
+              </label>
+              <label id="c-plazo-label" hidden><span>Plazo (días)</span><input type="number" name="dias_plazo" value="30" min="1" /></label>
             </div>
             <div>
               <span class="muted">Líneas</span>
@@ -79,8 +93,17 @@ export async function vistaCompras(root) {
   const selEmpresa = root.querySelector('#c-empresa');
   const selBodega = root.querySelector('#c-bodega');
   const selProv = root.querySelector('#c-proveedor');
+  const selFormaPago = root.querySelector('#c-forma-pago');
   const items = root.querySelector('#c-items');
   const totalEl = root.querySelector('#c-total');
+
+  function actualizarFormaPago() {
+    const credito = selFormaPago.value === 'credito';
+    root.querySelector('#c-medio-pago-label').hidden = credito;
+    root.querySelector('#c-plazo-label').hidden = !credito;
+  }
+  selFormaPago.addEventListener('change', actualizarFormaPago);
+  actualizarFormaPago();
 
   function productosDe(empresaId) {
     return productos.filter((p) => p.empresa_id === empresaId);
@@ -130,7 +153,9 @@ export async function vistaCompras(root) {
         { titulo: 'Proveedor', campo: 'proveedor' },
         { titulo: 'Factura', render: (c) => `<span class="mono">${esc(c.numero_factura_proveedor || '—')}</span>` },
         { titulo: 'Líneas', num: true, campo: 'items' },
+        { titulo: 'Pago', render: (c) => badge(c.forma_pago === 'credito' ? 'Crédito' : 'Contado', c.forma_pago === 'credito' ? 'warn' : 'ok') },
         { titulo: 'Total', num: true, render: (c) => cop(c.total) },
+        { titulo: 'Saldo', num: true, render: (c) => (Number(c.saldo) > 0 ? cop(c.saldo) : '—') },
       ],
       filas: compras,
       filaAttrs: (c) => `class="clickable" data-id="${c.id}" data-titulo="${esc(`${c.proveedor} · ${dia(c.fecha)}`)}"`,
@@ -183,7 +208,11 @@ export async function vistaCompras(root) {
     const d = datosForm(form);
     const r = await api('/compras', {
       method: 'POST',
-      body: { empresa_id: d.empresa_id, proveedor_id: d.proveedor_id, numero_factura_proveedor: d.numero_factura_proveedor || null, fecha: d.fecha, items: lineas },
+      body: {
+        empresa_id: d.empresa_id, proveedor_id: d.proveedor_id, numero_factura_proveedor: d.numero_factura_proveedor || null, fecha: d.fecha, items: lineas,
+        forma_pago: d.forma_pago,
+        ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : { medio_pago: d.medio_pago }),
+      },
     });
     toast(`Compra registrada por ${cop(r.total)}`, 'ok');
     form.querySelector('[name=numero_factura_proveedor]').value = '';

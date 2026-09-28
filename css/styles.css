@@ -18,6 +18,11 @@
 }
 
 * { box-sizing: border-box; }
+/* El atributo [hidden] pierde contra cualquier display de una regla propia
+   (label, .row, etc.) porque el origen "author" siempre gana sobre el del
+   navegador, sin importar la especificidad. Se refuerza aquí una sola vez
+   para que ocultar cualquier elemento (label, div, fila...) funcione siempre. */
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body { font-family: 'Archivo', sans-serif; color: var(--ink); background: var(--bg); font-size: 15px; }
 a { color: inherit; }

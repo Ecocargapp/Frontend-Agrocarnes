@@ -5,6 +5,8 @@ import { vistaCompras } from './views/compras.js';
 import { vistaTraslados } from './views/traslados.js';
 import { vistaFormulacion } from './views/formulacion.js';
 import { vistaVentas } from './views/ventas.js';
+import { vistaCartera } from './views/cartera.js';
+import { vistaNotasCredito } from './views/notas-credito.js';
 import { vistaConfiguracion } from './views/configuracion.js';
 
 const vistas = {
@@ -13,6 +15,8 @@ const vistas = {
   traslados: vistaTraslados,
   formulacion: vistaFormulacion,
   ventas: vistaVentas,
+  cartera: vistaCartera,
+  'notas-credito': vistaNotasCredito,
   configuracion: vistaConfiguracion,
 };
 
@@ -41,12 +45,13 @@ function mostrarApp() {
 }
 
 async function navegar() {
-  const nombre = (location.hash || '#inventario').slice(1);
+  const [nombre, query] = (location.hash || '#inventario').slice(1).split('?');
   const vista = vistas[nombre] || vistas.inventario;
+  const params = new URLSearchParams(query || '');
   nav.querySelectorAll('a').forEach((a) => a.classList.toggle('active', a.dataset.view === nombre));
   contentView.innerHTML = '<p class="muted">Cargando…</p>';
   try {
-    await vista(contentView);
+    await vista(contentView, params);
   } catch (err) {
     contentView.innerHTML = `<p class="error">${err.message}</p>`;
   }

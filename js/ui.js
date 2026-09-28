@@ -61,6 +61,20 @@ export function badge(texto, tipo = '') { return `<span class="badge ${tipo}">${
 
 export const datosForm = (form) => Object.fromEntries(new FormData(form).entries());
 
+// Exporta un arreglo de objetos a un archivo .xlsx descargable.
+//   columnas: [{ titulo: 'Fecha', campo: 'fecha' }, { titulo: 'Total', valor: (f) => Number(f.total) }]
+//   filas: los datos (los mismos objetos que llenan las tablas en pantalla)
+export function descargarExcel({ nombreArchivo, hoja = 'Hoja1', columnas, filas }) {
+  if (!window.XLSX) { toast('No se pudo cargar el generador de Excel; revisa tu conexión e intenta de nuevo.', 'error'); return; }
+  const encabezado = columnas.map((c) => c.titulo);
+  const datos = filas.map((f) => columnas.map((c) => (c.valor ? c.valor(f) : f[c.campo] ?? '')));
+  const hojaDatos = window.XLSX.utils.aoa_to_sheet([encabezado, ...datos]);
+  hojaDatos['!cols'] = columnas.map((c) => ({ wch: c.ancho || 16 }));
+  const libro = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(libro, hojaDatos, hoja);
+  window.XLSX.writeFile(libro, nombreArchivo);
+}
+
 // Envuelve un handler de submit: deshabilita el botón, muestra errores como toast.
 export function alEnviar(form, fn) {
   form.addEventListener('submit', async (e) => {

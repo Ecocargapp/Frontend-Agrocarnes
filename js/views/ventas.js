@@ -1,7 +1,8 @@
 import { api, catalogo, invalidar } from '../api.js';
-import { html, esc, num, cop, fecha, toast, opciones, tabla, badge, datosForm, alEnviar } from '../ui.js';
+import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
 const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn' };
+const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
 export async function vistaVentas(root) {
   const [bodegas, clientes] = await Promise.all([catalogo('bodegas'), catalogo('clientes')]);
@@ -25,6 +26,18 @@ export async function vistaVentas(root) {
                 <button type="button" class="btn-secondary w-sm" id="btn-nuevo-cli">+ Nuevo</button>
               </div>
             </label>
+            <div class="row">
+              <label class="w-sm"><span>Forma de pago</span>
+                <select id="v-forma-pago" name="forma_pago">
+                  <option value="contado">Contado</option>
+                  <option value="credito">Crédito</option>
+                </select>
+              </label>
+              <label id="v-medio-pago-label"><span>Medio de pago</span>
+                <select name="medio_pago">${MEDIOS_PAGO.map((m) => `<option value="${m}">${esc(m[0].toUpperCase() + m.slice(1))}</option>`).join('')}</select>
+              </label>
+              <label id="v-plazo-label" hidden><span>Plazo (días)</span><input type="number" name="dias_plazo" value="30" min="1" /></label>
+            </div>
             <div>
               <span class="muted">Productos</span>
               <div class="items" id="v-items"></div>
@@ -32,6 +45,17 @@ export async function vistaVentas(root) {
             </div>
             <p class="total" id="v-total">Total: $0</p>
             <button type="submit" class="btn-primary">Facturar</button>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Informe de venta diaria</h2>
+          <p class="hint">Ventas de contado y a crédito con el medio de pago usado, para descargar a Excel.</p>
+          <form id="form-informe">
+            <div class="row">
+              <label class="w-sm"><span>Desde</span><input type="date" name="desde" value="${hoy()}" /></label>
+              <label class="w-sm"><span>Hasta</span><input type="date" name="hasta" value="${hoy()}" /></label>
+              <button type="submit" class="btn-secondary">Descargar Excel</button>
+            </div>
           </form>
         </div>
         <div class="card" id="card-cli" hidden>
@@ -72,9 +96,18 @@ export async function vistaVentas(root) {
   const form = root.querySelector('#form-venta');
   const selBodega = root.querySelector('#v-bodega');
   const selCliente = root.querySelector('#v-cliente');
+  const selFormaPago = root.querySelector('#v-forma-pago');
   const items = root.querySelector('#v-items');
   const totalEl = root.querySelector('#v-total');
   let existencias = [];
+
+  function actualizarFormaPago() {
+    const credito = selFormaPago.value === 'credito';
+    root.querySelector('#v-medio-pago-label').hidden = credito;
+    root.querySelector('#v-plazo-label').hidden = !credito;
+  }
+  selFormaPago.addEventListener('change', actualizarFormaPago);
+  actualizarFormaPago();
 
   async function cargarBodega() {
     localStorage.setItem('venta_bodega', selBodega.value);
@@ -123,8 +156,10 @@ export async function vistaVentas(root) {
         { titulo: 'Fecha', render: (v) => fecha(v.fecha) },
         { titulo: 'Empresa', campo: 'empresa' },
         { titulo: 'Cliente', render: (v) => esc(v.cliente || 'Consumidor final') },
+        { titulo: 'Pago', render: (v) => badge(v.forma_pago === 'credito' ? 'Crédito' : 'Contado', v.forma_pago === 'credito' ? 'warn' : 'ok') },
         { titulo: 'Total', num: true, render: (v) => cop(v.total) },
-        { titulo: 'DIAN', render: (v) => badge(v.estado_dian, ESTADO[v.estado_dian] || '') + (v.dian_mensaje && ['error', 'rechazada'].includes(v.estado_dian) ? ` <span class="muted" title="${esc(v.dian_mensaje)}">ⓘ</span>` : '') },
+        { titulo: 'Saldo', num: true, render: (v) => (Number(v.saldo) > 0 ? cop(v.saldo) : '—') },
+        { titulo: 'Estado', render: (v) => v.estado === 'anulada' ? badge('Anulada', 'danger') : badge(v.estado_dian, ESTADO[v.estado_dian] || '') + (v.dian_mensaje && ['error', 'rechazada'].includes(v.estado_dian) ? ` <span class="muted" title="${esc(v.dian_mensaje)}">ⓘ</span>` : '') },
       ],
       filas,
       filaAttrs: (v) => `class="clickable" data-id="${v.id}"`,
@@ -137,12 +172,18 @@ export async function vistaVentas(root) {
     const f = await api(`/ventas/${id}`);
     root.querySelector('#titulo-detalle').textContent = `Factura ${f.consecutivo || ''} · ${f.empresa}`;
     root.querySelector('#detalle').innerHTML = html`
-      <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} · DIAN: ${badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.arco_factura_id ? ` · Arco #${esc(f.arco_factura_id)}` : ''}</p>
+      <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} ·
+        Pago: ${badge(f.forma_pago === 'credito' ? 'Crédito' : 'Contado', f.forma_pago === 'credito' ? 'warn' : 'ok')}
+        ${f.forma_pago === 'credito' ? ` · Vence: ${esc(dia(f.fecha_vencimiento))} · Saldo: ${cop(f.saldo)}` : ''}
+        ${f.estado === 'anulada' ? ` · ${badge('Anulada', 'danger')}` : ''} · DIAN: ${badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.arco_factura_id ? ` · Arco #${esc(f.arco_factura_id)}` : ''}
+      </p>
+      ${f.estado === 'anulada' && f.motivo_anulacion ? `<p class="muted">Motivo de anulación: ${esc(f.motivo_anulacion)}</p>` : ''}
       ${f.cufe ? `<p class="muted">CUFE: <span class="mono" style="word-break:break-all">${esc(f.cufe)}</span>${f.pdf_url ? ` · <a href="${esc(f.pdf_url)}" target="_blank" rel="noopener">Ver representación gráfica</a>` : ''}</p>` : ''}
       ${f.dian_mensaje ? `<p class="${['error', 'rechazada'].includes(f.estado_dian) ? 'error' : 'muted'}">${esc(f.dian_mensaje)}</p>` : ''}
       <p class="row" style="gap:8px">
         ${['pendiente', 'error', 'rechazada', 'sin_configurar'].includes(f.estado_dian) ? `<button type="button" class="btn-secondary" data-dian="reenviar" data-id="${f.id}">Reintentar envío a la DIAN</button>` : ''}
         ${f.arco_factura_id && f.estado_dian !== 'aceptada' ? `<button type="button" class="btn-secondary" data-dian="estado" data-id="${f.id}">Actualizar estado</button>` : ''}
+        ${f.estado !== 'anulada' ? `<a class="btn-secondary" style="display:inline-block;text-decoration:none" href="#notas-credito?factura=${f.id}">Nota crédito / Anular</a>` : ''}
       </p>
       ${tabla({
         columnas: [
@@ -193,14 +234,45 @@ export async function vistaVentas(root) {
     if (lineas.some((l) => !l.producto_id || !(l.cantidad > 0) || !(l.precio_unitario >= 0))) {
       throw new Error('Revisa las líneas: producto, cantidad y precio son obligatorios');
     }
+    if (selFormaPago.value === 'credito' && !selCliente.value) {
+      throw new Error('Una venta a crédito necesita un cliente identificado');
+    }
     const bodega = bodegas.find((b) => b.id === selBodega.value);
+    const d = datosForm(form);
     const r = await api('/ventas', {
       method: 'POST',
-      body: { empresa_id: bodega.empresa_id, bodega_id: bodega.id, cliente_id: selCliente.value || null, items: lineas },
+      body: {
+        empresa_id: bodega.empresa_id, bodega_id: bodega.id, cliente_id: selCliente.value || null, items: lineas,
+        forma_pago: d.forma_pago,
+        ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : { medio_pago: d.medio_pago }),
+      },
     });
     toast(`Factura ${r.consecutivo} registrada`, 'ok');
     await Promise.all([cargarBodega(), cargarLista()]);
     verDetalle(r.id);
+  });
+
+  alEnviar(root.querySelector('#form-informe'), async (e) => {
+    const d = datosForm(e.target);
+    const bodega = bodegas.find((b) => b.id === selBodega.value);
+    const filas = await api(`/ventas/reporte-diario?empresa_id=${bodega.empresa_id}&desde=${d.desde}&hasta=${d.hasta}`);
+    if (!filas.length) { toast('No hay ventas en ese rango de fechas', ''); return; }
+    descargarExcel({
+      nombreArchivo: `venta-diaria_${d.desde}_a_${d.hasta}.xlsx`,
+      hoja: 'Venta diaria',
+      columnas: [
+        { titulo: 'Fecha', valor: (v) => dia(v.fecha), ancho: 12 },
+        { titulo: 'Factura', campo: 'consecutivo', ancho: 14 },
+        { titulo: 'Empresa', campo: 'empresa', ancho: 14 },
+        { titulo: 'Cliente', campo: 'cliente', ancho: 22 },
+        { titulo: 'Forma de pago', valor: (v) => (v.forma_pago === 'credito' ? 'Crédito' : 'Contado'), ancho: 13 },
+        { titulo: 'Medio de pago', valor: (v) => v.medio_pago || (v.forma_pago === 'credito' ? 'Pendiente' : ''), ancho: 15 },
+        { titulo: 'Total', valor: (v) => Number(v.total), ancho: 14 },
+        { titulo: 'Saldo', valor: (v) => Number(v.saldo), ancho: 14 },
+        { titulo: 'Estado', valor: (v) => (v.estado === 'anulada' ? 'Anulada' : v.estado_dian), ancho: 14 },
+      ],
+      filas,
+    });
   });
 
   await Promise.all([cargarBodega(), cargarLista()]);
