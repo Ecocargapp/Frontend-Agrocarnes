@@ -19,3 +19,10 @@ cd /var/www/app-agrocarnes && git pull
 ```
 
 Se publica en `https://agrocarnes.agrofranpabel.com`.
+
+## Documentación
+
+La documentación completa del sistema (frontend incluido) y la bitácora de
+cambios viven en el repositorio del backend:
+[Backend-Agrocarnes/docs](https://github.com/Ecocargapp/Backend-Agrocarnes/tree/main/docs) ·
+[CHANGELOG](https://github.com/Ecocargapp/Backend-Agrocarnes/blob/main/CHANGELOG.md).
