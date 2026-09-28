@@ -6,16 +6,28 @@ export async function vistaConfiguracion(root) {
 
   root.innerHTML = html`
     <div class="page-head">
-      <h1>Configuración · Facturación electrónica (Arco)</h1>
-      <span class="hint">Cada empresa con NIT propio tiene su cuenta de Arco. Al facturar, el sistema crea la factura en Arco y Arco la numera, la firma y la transmite a la DIAN.</span>
+      <h1>Configuración · Facturación electrónica</h1>
+      <span class="hint">Cada empresa con NIT propio tiene su propia cuenta con el proveedor de facturación electrónica. Al facturar, el sistema envía la factura al proveedor elegido, que la numera, la firma y la transmite a la DIAN.</span>
+    </div>
+    <div class="card">
+      <h2>Proveedor por empresa</h2>
+      <div class="row">
+        <label><span>Empresa</span>
+          <select id="p-empresa">${opciones(empresas, { texto: (e) => `${e.nombre}${e.arco_configurada ? ' · Arco ✓' : ''}${e.factus_configurada ? ' · Factus ✓' : ''}` })}</select>
+        </label>
+        <label class="w-sm"><span>Proveedor activo</span>
+          <select id="p-proveedor">
+            <option value="arco">Arco</option>
+            <option value="factus">Factus</option>
+          </select>
+        </label>
+      </div>
+      <p class="muted" style="margin:4px 0 0">Las facturas y notas crédito nuevas de esta empresa se enviarán al proveedor elegido aquí; las que ya se enviaron no cambian.</p>
     </div>
     <div class="grid">
       <div class="card">
         <h2>Cuenta de Arco</h2>
         <form id="form-arco">
-          <label><span>Empresa</span>
-            <select id="a-empresa">${opciones(empresas, { texto: (e) => `${e.nombre}${e.arco_configurada ? ' ✓' : ''}` })}</select>
-          </label>
           <label><span>Host (servidor de Arco)</span><input name="host" placeholder="miempresa.arco365.com" required /></label>
           <div class="row">
             <label><span>Empresa en Arco (CompanyName)</span><input name="company" required /></label>
@@ -52,57 +64,132 @@ export async function vistaConfiguracion(root) {
           <button type="submit" class="btn-primary">Guardar configuración</button>
         </form>
       </div>
+      <div class="card">
+        <h2>Cuenta de Factus</h2>
+        <form id="form-factus">
+          <label class="w-sm"><span>Entorno</span>
+            <select name="base_url">
+              <option value="https://api-sandbox.factus.com.co">Sandbox (pruebas)</option>
+              <option value="https://api.factus.com.co">Producción</option>
+            </select>
+          </label>
+          <div class="row">
+            <label><span>Client ID</span><input name="client_id" required /></label>
+            <label><span>Client Secret <span class="muted" id="f-secret-hint"></span></span><input name="client_secret" type="password" autocomplete="new-password" /></label>
+          </div>
+          <div class="row">
+            <label><span>Correo / usuario</span><input name="email" type="email" required /></label>
+            <label><span>Contraseña <span class="muted" id="f-pass-hint"></span></span><input name="password" type="password" autocomplete="new-password" /></label>
+          </div>
+          <div class="row">
+            <button type="button" class="btn-secondary" id="btn-probar-factus">Probar conexión</button>
+          </div>
+          <div id="f-resultado"></div>
+          <hr style="border:0;border-top:1px solid var(--border);margin:6px 0" />
+          <div class="row">
+            <label><span>Rango de numeración · Facturas</span><input name="numbering_range_id_factura" type="number" placeholder="ej. 389" /></label>
+            <label><span>Rango de numeración · Notas crédito</span><input name="numbering_range_id_nota_credito" type="number" placeholder="ej. 1776" /></label>
+          </div>
+          <p class="muted" style="margin:0 0 6px">Solo obligatorio si la cuenta tiene más de un rango activo; pulsa "Probar conexión" para verlos.</p>
+          <div class="row">
+            <label><span>Método de pago por defecto (contado)</span><input name="payment_method_code_default" value="42" /></label>
+            <label><span>Municipio (DANE) por defecto</span><input name="municipality_code_default" value="05001" /></label>
+          </div>
+          <button type="submit" class="btn-primary">Guardar configuración</button>
+        </form>
+      </div>
       <div>
         <div class="card">
           <h2>Cómo funciona</h2>
           <ol class="muted" style="margin:0;padding-left:18px;line-height:1.6">
-            <li>Ingresa host, empresa, usuario y contraseña de Arco y pulsa <b>Probar conexión</b>: verás las sucursales, bodegas y el DocumentoId que Arco usa hoy para facturar.</li>
-            <li>Copia esos valores en los campos de abajo y guarda.</li>
-            <li>En <b>Inventario</b>, a cada producto que se vende asígnale su <b>código Arco</b> (el ProductoId con el que existe en Arco) y el % de impuesto incluido en el precio.</li>
-            <li>Al facturar en <b>Ventas</b>, la factura sale a Arco en segundo plano; el estado DIAN y el CUFE aparecen en la lista de facturas.</li>
-            <li>Los clientes con documento se crean en Arco automáticamente la primera vez que se les factura.</li>
+            <li>Elige el proveedor arriba y llena la cuenta correspondiente (Arco o Factus) para la empresa seleccionada.</li>
+            <li>En Factus, pulsa <b>Probar conexión</b> para confirmar las credenciales y ver los rangos de numeración disponibles.</li>
+            <li>En <b>Inventario</b>, a cada producto que se vende asígnale su código en el proveedor (Arco) y, para Factus, la unidad de medida si no es "unidad", además del % de impuesto incluido en el precio.</li>
+            <li>Al facturar en <b>Ventas</b>, la factura sale al proveedor activo en segundo plano; el estado DIAN y el CUFE aparecen en la lista de facturas. Factus normalmente devuelve el CUFE de inmediato.</li>
+            <li>Los clientes con documento se envían automáticamente con cada factura; con Arco además quedan registrados allá la primera vez.</li>
           </ol>
         </div>
         <div class="card">
           <h2>Estados DIAN</h2>
           <p class="muted" style="margin:0;line-height:1.8">
             ${badge('pendiente', 'warn')} aún no se envía ·
-            ${badge('enviada', 'warn')} está en Arco, esperando CUFE ·
+            ${badge('enviada', 'warn')} enviada, esperando CUFE ·
             ${badge('aceptada', 'ok')} CUFE recibido ·
             ${badge('error', 'danger')} falló, se reintenta solo ·
-            ${badge('rechazada', 'danger')} Arco/DIAN la rechazó, revisa el mensaje ·
-            ${badge('sin_configurar', '')} la empresa no tiene cuenta de Arco
+            ${badge('rechazada', 'danger')} el proveedor/DIAN la rechazó, revisa el mensaje ·
+            ${badge('sin_configurar', '')} la empresa no tiene cuenta configurada en el proveedor activo
           </p>
         </div>
       </div>
     </div>
   `;
 
-  const form = root.querySelector('#form-arco');
-  const selEmpresa = root.querySelector('#a-empresa');
-  const resultado = root.querySelector('#a-resultado');
-  const passHint = root.querySelector('#a-pass-hint');
+  const selEmpresa = root.querySelector('#p-empresa');
+  const selProveedor = root.querySelector('#p-proveedor');
 
-  async function cargar() {
-    resultado.innerHTML = '';
+  const formArco = root.querySelector('#form-arco');
+  const resultadoArco = root.querySelector('#a-resultado');
+  const passHintArco = root.querySelector('#a-pass-hint');
+
+  const formFactus = root.querySelector('#form-factus');
+  const resultadoFactus = root.querySelector('#f-resultado');
+  const passHintFactus = root.querySelector('#f-pass-hint');
+  const secretHintFactus = root.querySelector('#f-secret-hint');
+
+  function empresaSeleccionada() {
+    return empresas.find((e) => e.id === selEmpresa.value);
+  }
+
+  async function cargarProveedor() {
+    selProveedor.value = empresaSeleccionada()?.proveedor_dian || 'arco';
+  }
+
+  async function cargarArco() {
+    resultadoArco.innerHTML = '';
     const { config } = await api(`/empresas/${selEmpresa.value}/arco`);
-    for (const el of form.elements) {
+    for (const el of formArco.elements) {
       if (!el.name) continue;
       if (el.type === 'checkbox') el.checked = config ? config[el.name] !== false : true;
       else if (el.name === 'password') el.value = '';
       else el.value = config?.[el.name] ?? el.defaultValue ?? '';
     }
-    passHint.textContent = config?.password_guardada ? '(guardada; deja vacío para conservarla)' : '';
+    passHintArco.textContent = config?.password_guardada ? '(guardada; deja vacío para conservarla)' : '';
   }
 
-  selEmpresa.addEventListener('change', cargar);
+  async function cargarFactus() {
+    resultadoFactus.innerHTML = '';
+    const { config } = await api(`/empresas/${selEmpresa.value}/factus`);
+    for (const el of formFactus.elements) {
+      if (!el.name) continue;
+      if (el.name === 'password') el.value = '';
+      else if (el.name === 'client_secret') el.value = '';
+      else el.value = config?.[el.name] ?? el.defaultValue ?? '';
+    }
+    passHintFactus.textContent = config?.password_guardada ? '(guardada; deja vacío para conservarla)' : '';
+    secretHintFactus.textContent = config?.client_secret_guardado ? '(guardado; deja vacío para conservarlo)' : '';
+  }
+
+  async function cargarTodo() {
+    await cargarProveedor();
+    await Promise.all([cargarArco(), cargarFactus()]);
+  }
+
+  selEmpresa.addEventListener('change', cargarTodo);
+
+  selProveedor.addEventListener('change', async () => {
+    await api(`/empresas/${selEmpresa.value}/proveedor-dian`, { method: 'PUT', body: { proveedor: selProveedor.value } });
+    const e = empresaSeleccionada();
+    if (e) e.proveedor_dian = selProveedor.value;
+    invalidar('empresas');
+    toast(`Proveedor activo: ${selProveedor.value === 'factus' ? 'Factus' : 'Arco'}`, 'ok');
+  });
 
   root.querySelector('#btn-probar').addEventListener('click', async () => {
-    const d = Object.fromEntries(new FormData(form).entries());
-    resultado.innerHTML = '<p class="muted">Conectando con Arco…</p>';
+    const d = Object.fromEntries(new FormData(formArco).entries());
+    resultadoArco.innerHTML = '<p class="muted">Conectando con Arco…</p>';
     try {
       const r = await api(`/empresas/${selEmpresa.value}/arco/probar`, { method: 'POST', body: { host: d.host, company: d.company, user: d.user, password: d.password } });
-      resultado.innerHTML = html`
+      resultadoArco.innerHTML = html`
         <p class="muted">${badge('Conexión correcta', 'ok')} Usa estos valores para llenar los campos:</p>
         <p class="muted"><b>Documentos de factura en uso</b></p>
         ${tabla({ columnas: [
@@ -116,19 +203,49 @@ export async function vistaConfiguracion(root) {
         ${r.errores?.length ? `<p class="error">${esc(r.errores.join(' · '))}</p>` : ''}
       `;
     } catch (err) {
-      resultado.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+      resultadoArco.innerHTML = `<p class="error">${esc(err.message)}</p>`;
     }
   });
 
-  alEnviar(form, async () => {
-    const d = Object.fromEntries(new FormData(form).entries());
-    d.precios_incluyen_impuesto = form.elements.precios_incluyen_impuesto.checked;
+  root.querySelector('#btn-probar-factus').addEventListener('click', async () => {
+    const d = Object.fromEntries(new FormData(formFactus).entries());
+    resultadoFactus.innerHTML = '<p class="muted">Conectando con Factus…</p>';
+    try {
+      const r = await api(`/empresas/${selEmpresa.value}/factus/probar`, {
+        method: 'POST',
+        body: { base_url: d.base_url, client_id: d.client_id, client_secret: d.client_secret, email: d.email, password: d.password },
+      });
+      resultadoFactus.innerHTML = html`
+        <p class="muted">${badge('Conexión correcta', 'ok')} Rangos de numeración disponibles — copia el id del que quieras usar:</p>
+        ${tabla({ columnas: [
+          { titulo: 'id', campo: 'id' }, { titulo: 'Documento', campo: 'documento' }, { titulo: 'Prefijo', campo: 'prefijo' }, { titulo: 'Activo', campo: (x) => (x.activo ? 'Sí' : 'No') },
+        ], filas: r.rangos_numeracion, vacio: 'Factus no devolvió rangos de numeración.' })}
+      `;
+    } catch (err) {
+      resultadoFactus.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+    }
+  });
+
+  alEnviar(formArco, async () => {
+    const d = Object.fromEntries(new FormData(formArco).entries());
+    d.precios_incluyen_impuesto = formArco.elements.precios_incluyen_impuesto.checked;
     await api(`/empresas/${selEmpresa.value}/arco`, { method: 'PUT', body: d });
     invalidar('empresas');
     toast('Configuración de Arco guardada', 'ok');
-    passHint.textContent = '(guardada; deja vacío para conservarla)';
-    form.elements.password.value = '';
+    passHintArco.textContent = '(guardada; deja vacío para conservarla)';
+    formArco.elements.password.value = '';
   });
 
-  await cargar();
+  alEnviar(formFactus, async () => {
+    const d = Object.fromEntries(new FormData(formFactus).entries());
+    await api(`/empresas/${selEmpresa.value}/factus`, { method: 'PUT', body: d });
+    invalidar('empresas');
+    toast('Configuración de Factus guardada', 'ok');
+    passHintFactus.textContent = '(guardada; deja vacío para conservarla)';
+    secretHintFactus.textContent = '(guardado; deja vacío para conservarlo)';
+    formFactus.elements.password.value = '';
+    formFactus.elements.client_secret.value = '';
+  });
+
+  await cargarTodo();
 }

@@ -137,6 +137,7 @@ export async function vistaInventario(root) {
       columnas: [
         { titulo: 'Producto', render: (p) => `${esc(p.nombre)} <span class="muted">(${esc(p.unidad_medida)} · ${esc(nombreEmpresa(p.empresa_id))})</span>` },
         { titulo: 'Código Arco', render: (p) => `<input class="mono" style="width:120px" data-id="${p.id}" data-campo="arco_producto_id" value="${esc(p.arco_producto_id || '')}" placeholder="—" />` },
+        { titulo: 'Unidad Factus', render: (p) => `<input class="mono" style="width:80px" data-id="${p.id}" data-campo="factus_unidad_medida_code" value="${esc(p.factus_unidad_medida_code || '')}" placeholder="auto" title="Código UN/CEFACT (ej. KGM, LTR, 94=unidad); vacío = se infiere de la unidad" />` },
         { titulo: '% imp.', render: (p) => `<input class="mono" style="width:70px" type="number" step="0.01" min="0" data-id="${p.id}" data-campo="impuesto_pct" value="${esc(p.impuesto_pct ?? 0)}" />` },
       ],
       filas: productos,
