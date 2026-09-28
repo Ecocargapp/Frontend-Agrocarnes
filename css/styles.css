@@ -1,73 +1,121 @@
 /* Agrocarnes — mismo criterio tipográfico que AgroSoft (Archivo + IBM Plex
-   Mono), pero con su propio color de marca para distinguirse a simple vista.
-   Cambia --brand si prefieres otro tono. */
+   Mono), con su propio color de marca para distinguirse a simple vista. */
 
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
 :root {
-  --brand: #b3401f; /* terracota — placeholder, cámbialo si quieres otro */
+  --brand: #b3401f;
+  --brand-soft: #f6e6df;
   --ink: #1c1a17;
+  --muted: #6b6560;
   --bg: #faf8f6;
+  --card: #ffffff;
   --border: #e4ddd6;
+  --ok: #2e7d32;
+  --warn: #b26a00;
+  --danger: #b3261e;
+  --mono: 'IBM Plex Mono', monospace;
 }
 
 * { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: 'Archivo', sans-serif; color: var(--ink); background: var(--bg); font-size: 15px; }
+a { color: inherit; }
 
-body {
-  margin: 0;
-  font-family: 'Archivo', sans-serif;
-  color: var(--ink);
-  background: var(--bg);
-}
-
+/* ---------- barra superior ---------- */
 .topbar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 16px 24px;
-  border-bottom: 1px solid var(--border);
-  background: white;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 24px; height: 60px;
+  border-bottom: 1px solid var(--border); background: var(--card);
+  position: sticky; top: 0; z-index: 10;
 }
-
-.brand {
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: var(--brand);
+.brand { font-weight: 700; font-size: 1.25rem; color: var(--brand); margin-right: 24px; }
+.topbar nav { display: flex; gap: 4px; }
+.topbar nav a {
+  text-decoration: none; padding: 8px 12px; border-radius: 6px; font-weight: 500; color: var(--muted);
 }
+.topbar nav a:hover { background: var(--bg); color: var(--ink); }
+.topbar nav a.active { background: var(--brand-soft); color: var(--brand); }
+.spacer { flex: 1; }
+.user-box { display: flex; align-items: center; gap: 12px; font-size: .9rem; color: var(--muted); }
 
-nav button {
-  background: none;
-  border: none;
-  font-family: inherit;
-  font-size: 0.95rem;
-  cursor: pointer;
-  padding: 8px 12px;
-  border-radius: 6px;
+/* ---------- layout ---------- */
+main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.login { max-width: 360px; margin: 60px auto; }
+.login h1 { font-size: 1.4rem; margin: 0 0 16px; }
+.page-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.page-head h1 { font-size: 1.4rem; margin: 0; }
+.page-head .hint { color: var(--muted); font-size: .9rem; }
+.grid { display: grid; gap: 20px; grid-template-columns: minmax(340px, 460px) 1fr; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+.card h2 { font-size: 1.05rem; margin: 0 0 14px; }
+.card + .card { margin-top: 20px; }
+
+/* ---------- formularios ---------- */
+form { display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
+label > span { font-weight: 500; }
+input, select, textarea {
+  font-family: var(--mono); font-size: .9rem; color: var(--ink);
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
 }
+input:focus, select:focus { outline: 2px solid var(--brand-soft); border-color: var(--brand); }
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; min-width: 0; }
+.row > .w-sm { flex: 0 0 110px; }
+.row > .w-xs { flex: 0 0 44px; }
 
-nav button:hover { background: var(--bg); }
+button { font-family: inherit; font-size: .9rem; cursor: pointer; border-radius: 6px; }
+.btn-primary { background: var(--brand); color: #fff; border: none; padding: 10px 16px; font-weight: 600; }
+.btn-primary:disabled { opacity: .6; cursor: default; }
+.btn-secondary { background: #fff; color: var(--ink); border: 1px solid var(--border); padding: 8px 12px; }
+.btn-secondary:hover { border-color: var(--brand); color: var(--brand); }
+.btn-link { background: none; border: none; color: var(--brand); padding: 4px 6px; font-weight: 500; }
+.btn-icon { background: none; border: none; color: var(--muted); padding: 6px; font-size: 1rem; line-height: 1; }
+.btn-icon:hover { color: var(--danger); }
 
-main { padding: 24px; max-width: 720px; margin: 0 auto; }
+.items { display: flex; flex-direction: column; gap: 8px; }
+.items .row { align-items: end; }
+.total { font-family: var(--mono); font-weight: 500; text-align: right; padding-top: 6px; border-top: 1px dashed var(--border); }
 
-form { display: flex; flex-direction: column; gap: 12px; max-width: 320px; }
+/* ---------- tablas ---------- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); font-weight: 600; }
+td.num, th.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--bg); }
+tr.selected td { background: var(--brand-soft); }
+.empty { color: var(--muted); font-style: italic; padding: 12px 0; }
 
-label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; background: var(--bg); color: var(--muted); }
+.badge.ok { background: #e6f2e7; color: var(--ok); }
+.badge.warn { background: #fdf1de; color: var(--warn); }
+.badge.danger { background: #fbe4e2; color: var(--danger); }
+.badge.brand { background: var(--brand-soft); color: var(--brand); }
 
-input {
-  font-family: 'IBM Plex Mono', monospace;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tabs button { background: none; border: none; padding: 10px 14px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 500; border-radius: 0; }
+.tabs button.active { color: var(--brand); border-bottom-color: var(--brand); }
+
+.error { color: var(--danger); font-size: .9rem; }
+.muted { color: var(--muted); font-size: .85rem; }
+.mono { font-family: var(--mono); }
+
+/* ---------- toast ---------- */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 8px;
+  font-size: .9rem; box-shadow: 0 6px 24px rgba(0,0,0,.18); z-index: 100; max-width: 90vw;
 }
+.toast.error { background: var(--danger); }
+.toast.ok { background: var(--ok); }
 
-button[type='submit'] {
-  background: var(--brand);
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 6px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.error { color: #b3261e; font-size: 0.9rem; }
+/* líneas de compra/venta/fórmula: el producto ocupa toda la fila, debajo cantidad y precio */
+.items .linea { flex-wrap: wrap; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.items .linea > select { flex: 1 1 100%; }
+.items .linea > input { flex: 1 1 0; }
+.items .linea > .btn-icon { flex: 0 0 auto; }

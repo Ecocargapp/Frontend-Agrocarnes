@@ -10,29 +10,34 @@
   <header class="topbar">
     <span class="brand">Agrocarnes</span>
     <nav id="nav" hidden>
-      <button data-view="inventario">Inventario</button>
-      <button data-view="compras">Compras</button>
-      <button data-view="traslados">Traslados</button>
-      <button data-view="produccion">Producción</button>
-      <button data-view="ventas">Ventas</button>
+      <a href="#inventario" data-view="inventario">Inventario</a>
+      <a href="#compras" data-view="compras">Compras</a>
+      <a href="#traslados" data-view="traslados">Traslados</a>
+      <a href="#formulacion" data-view="formulacion">Formulación</a>
+      <a href="#ventas" data-view="ventas">Ventas</a>
     </nav>
+    <div class="spacer"></div>
+    <div id="user-box" class="user-box" hidden>
+      <span id="user-name"></span>
+      <button id="logout" class="btn-link">Salir</button>
+    </div>
   </header>
 
   <main id="app">
-    <section id="login-view">
+    <section id="login-view" class="login">
       <h1>Iniciar sesión</h1>
       <form id="login-form">
-        <label>Email <input type="email" name="email" required /></label>
-        <label>Contraseña <input type="password" name="password" required /></label>
-        <button type="submit">Entrar</button>
+        <label>Correo <input type="email" name="email" required autocomplete="username" /></label>
+        <label>Contraseña <input type="password" name="password" required autocomplete="current-password" /></label>
+        <button type="submit" class="btn-primary">Entrar</button>
         <p id="login-error" class="error" hidden></p>
       </form>
     </section>
 
-    <section id="content-view" hidden>
-      <p>Sesión iniciada. Esta pantalla se va llenando módulo por módulo.</p>
-    </section>
+    <section id="content-view" hidden></section>
   </main>
+
+  <div id="toast" class="toast" hidden></div>
 
   <script type="module" src="js/app.js"></script>
 </body>
