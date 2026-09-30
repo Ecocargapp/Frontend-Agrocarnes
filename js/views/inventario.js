@@ -55,13 +55,25 @@ export async function vistaInventario(root) {
             <div class="row">
               <label><span>Código en Arco (ProductoId)</span><input name="arco_producto_id" placeholder="Igual al de Arco" /></label>
               <label class="w-sm"><span>% imp. incluido</span><input name="impuesto_pct" type="number" step="0.01" min="0" value="0" /></label>
+              <label class="w-sm"><span>Impuesto</span>
+                <select name="tipo_impuesto"><option value="IVA">IVA</option><option value="INC">INC (consumo)</option></select>
+              </label>
+            </div>
+            <div class="row">
+              <label><span>Precio de venta (con impuesto)</span><input name="precio_venta" type="number" step="1" min="0" placeholder="Opcional" /></label>
+              <label><span>Inventario</span>
+                <select name="maneja_inventario">
+                  <option value="true">Maneja inventario</option>
+                  <option value="false">No (plato del menú / servicio)</option>
+                </select>
+              </label>
             </div>
             <button type="submit" class="btn-primary">Crear producto</button>
           </form>
         </div>
         <div class="card">
-          <h2>Productos y códigos Arco</h2>
-          <p class="muted">Edita el código y el % de impuesto directamente; se guarda al salir del campo.</p>
+          <h2>Productos, precios e impuestos</h2>
+          <p class="muted">Edita cualquier campo directamente; se guarda al salir del campo.</p>
           <div id="lista-productos"></div>
         </div>
       </div>
@@ -139,6 +151,9 @@ export async function vistaInventario(root) {
         { titulo: 'Código Arco', render: (p) => `<input class="mono" style="width:120px" data-id="${p.id}" data-campo="arco_producto_id" value="${esc(p.arco_producto_id || '')}" placeholder="—" />` },
         { titulo: 'Unidad Factus', render: (p) => `<input class="mono" style="width:80px" data-id="${p.id}" data-campo="factus_unidad_medida_code" value="${esc(p.factus_unidad_medida_code || '')}" placeholder="auto" title="Código UN/CEFACT (ej. KGM, LTR, 94=unidad); vacío = se infiere de la unidad" />` },
         { titulo: '% imp.', render: (p) => `<input class="mono" style="width:70px" type="number" step="0.01" min="0" data-id="${p.id}" data-campo="impuesto_pct" value="${esc(p.impuesto_pct ?? 0)}" />` },
+        { titulo: 'Impuesto', render: (p) => `<select data-id="${p.id}" data-campo="tipo_impuesto"><option ${p.tipo_impuesto !== 'INC' ? 'selected' : ''}>IVA</option><option ${p.tipo_impuesto === 'INC' ? 'selected' : ''}>INC</option></select>` },
+        { titulo: 'Precio venta', render: (p) => `<input class="mono" style="width:100px" type="number" step="1" min="0" data-id="${p.id}" data-campo="precio_venta" value="${esc(p.precio_venta != null ? Math.round(p.precio_venta) : '')}" placeholder="—" />` },
+        { titulo: 'Inventario', render: (p) => `<input type="checkbox" data-id="${p.id}" data-campo="maneja_inventario" ${p.maneja_inventario !== false ? 'checked' : ''} title="Desmarcado = plato del menú o servicio: se vende sin existencias" />` },
       ],
       filas: productos,
       vacio: 'Todavía no hay productos.',
@@ -146,10 +161,11 @@ export async function vistaInventario(root) {
   }
 
   root.querySelector('#lista-productos').addEventListener('change', async (e) => {
-    const inp = e.target.closest('input[data-id]');
+    const inp = e.target.closest('input[data-id], select[data-id]');
     if (!inp) return;
     try {
-      await api(`/productos/${inp.dataset.id}`, { method: 'PATCH', body: { [inp.dataset.campo]: inp.value } });
+      const valor = inp.type === 'checkbox' ? inp.checked : inp.value;
+      await api(`/productos/${inp.dataset.id}`, { method: 'PATCH', body: { [inp.dataset.campo]: valor } });
       invalidar('productos');
       toast('Producto actualizado', 'ok');
     } catch (err) { toast(err.message, 'error'); }

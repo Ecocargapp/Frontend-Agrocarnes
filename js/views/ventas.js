@@ -111,7 +111,17 @@ export async function vistaVentas(root) {
 
   async function cargarBodega() {
     localStorage.setItem('venta_bodega', selBodega.value);
-    existencias = (await api(`/inventario/existencias?bodega_id=${selBodega.value}`)).filter((e) => Number(e.cantidad) > 0);
+    const bodega = bodegas.find((b) => b.id === selBodega.value);
+    const [stock, productos] = await Promise.all([
+      api(`/inventario/existencias?bodega_id=${selBodega.value}`),
+      catalogo('productos', true),
+    ]);
+    const precios = Object.fromEntries(productos.map((p) => [p.id, p.precio_venta]));
+    // Productos con existencias en la bodega + platos/servicios de la empresa (no manejan inventario).
+    existencias = stock.filter((e) => Number(e.cantidad) > 0).map((e) => ({ ...e, precio_venta: precios[e.producto_id] }));
+    productos
+      .filter((p) => p.maneja_inventario === false && p.empresa_id === bodega?.empresa_id)
+      .forEach((p) => existencias.push({ producto_id: p.id, producto: p.nombre, cantidad: null, unidad_medida: p.unidad_medida, precio_venta: p.precio_venta }));
     items.innerHTML = '';
     agregarLinea();
     calcularTotal();
@@ -121,7 +131,7 @@ export async function vistaVentas(root) {
     const div = document.createElement('div');
     div.className = 'row linea';
     div.innerHTML = html`
-      <select data-campo="producto_id" required>${opciones(existencias, { valor: 'producto_id', vacio: existencias.length ? 'Producto…' : 'Sin existencias en este punto', texto: (e) => `${e.producto} — ${num(e.cantidad)} ${e.unidad_medida}` })}</select>
+      <select data-campo="producto_id" required>${opciones(existencias, { valor: 'producto_id', vacio: existencias.length ? 'Producto…' : 'Sin existencias en este punto', texto: (e) => e.cantidad === null ? `${e.producto} — menú` : `${e.producto} — ${num(e.cantidad)} ${e.unidad_medida}` })}</select>
       <input class="w-sm" data-campo="cantidad" type="number" step="0.001" min="0.001" placeholder="Cant." required />
       <input class="w-sm" data-campo="precio_unitario" type="number" step="1" min="0" placeholder="Precio u." required />
       <button type="button" class="btn-icon w-xs" title="Quitar">✕</button>
@@ -130,7 +140,9 @@ export async function vistaVentas(root) {
     div.querySelectorAll('input').forEach((i) => i.addEventListener('input', calcularTotal));
     div.querySelector('select').addEventListener('change', (e) => {
       const ex = existencias.find((x) => x.producto_id === e.target.value);
-      div.querySelector('[data-campo=cantidad]').max = ex ? ex.cantidad : '';
+      div.querySelector('[data-campo=cantidad]').max = ex && ex.cantidad !== null ? ex.cantidad : '';
+      const precio = div.querySelector('[data-campo=precio_unitario]');
+      if (ex?.precio_venta != null && !precio.value) { precio.value = Math.round(Number(ex.precio_venta)); calcularTotal(); }
     });
     items.appendChild(div);
   }
