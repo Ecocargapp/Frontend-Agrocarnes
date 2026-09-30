@@ -207,7 +207,7 @@ export async function vistaConfiguracion(root) {
     }
   });
 
-  root.querySelector('#btn-probar-factus').addEventListener('click', async () => {
+  async function probarFactus() {
     const d = Object.fromEntries(new FormData(formFactus).entries());
     resultadoFactus.innerHTML = '<p class="muted">Conectando con Factus…</p>';
     try {
@@ -215,14 +215,55 @@ export async function vistaConfiguracion(root) {
         method: 'POST',
         body: { base_url: d.base_url, client_id: d.client_id, client_secret: d.client_secret, email: d.email, password: d.password },
       });
+      const actual = formFactus.elements.numbering_range_id_factura.value;
+      const registrados = r.rangos_numeracion || [];
+      const yaEnFactus = new Set(registrados.map((x) => `${x.prefijo}|${x.resolucion}`));
+      const dian = Array.isArray(r.rangos_dian) ? r.rangos_dian : [];
       resultadoFactus.innerHTML = html`
-        <p class="muted">${badge('Conexión correcta', 'ok')} Rangos de numeración disponibles — copia el id del que quieras usar:</p>
+        <p class="muted">${badge('Conexión correcta', 'ok')} Rangos registrados en Factus:</p>
         ${tabla({ columnas: [
-          { titulo: 'id', campo: 'id' }, { titulo: 'Documento', campo: 'documento' }, { titulo: 'Prefijo', campo: 'prefijo' }, { titulo: 'Activo', campo: (x) => (x.activo ? 'Sí' : 'No') },
-        ], filas: r.rangos_numeracion, vacio: 'Factus no devolvió rangos de numeración.' })}
+          { titulo: 'id', campo: 'id' }, { titulo: 'Prefijo', campo: 'prefijo' },
+          { titulo: 'Números', render: (x) => `${esc(x.desde ?? '')}–${esc(x.hasta ?? '')} (va en ${esc(x.actual ?? '')})` },
+          { titulo: 'Activo', render: (x) => (x.activo ? 'Sí' : 'No') },
+          { titulo: '', render: (x) => String(x.id) === String(actual) ? badge('En uso aquí', 'ok') : `<button type="button" class="btn-secondary" data-usar-rango="${x.id}">Usar en esta empresa</button>` },
+        ], filas: registrados, vacio: 'Factus todavía no tiene rangos registrados.' })}
+        <p class="muted" style="margin-top:12px">Rangos que la DIAN tiene asociados al software de Factus:</p>
+        ${Array.isArray(r.rangos_dian) ? tabla({ columnas: [
+          { titulo: 'Prefijo', campo: 'prefijo' }, { titulo: 'Resolución', campo: 'resolucion' },
+          { titulo: 'Números', render: (x) => `${esc(x.desde)}–${esc(x.hasta)}` },
+          { titulo: 'Vigencia', render: (x) => `${esc(x.inicio || '')} → ${esc(x.fin || '')}` },
+          { titulo: '', render: (x) => yaEnFactus.has(`${x.prefijo}|${x.resolucion}`) ? badge('Registrado', 'ok') : `<button type="button" class="btn-primary" data-registrar-rango="${esc(x.prefijo)}" data-resolucion="${esc(x.resolucion)}" data-desde="${esc(x.desde)}">Registrar y usar aquí</button>` },
+        ], filas: dian, vacio: 'La DIAN no tiene rangos asociados a Factus para esta cuenta.' }) : `<p class="error">${esc(r.rangos_dian?.error || 'No se pudieron consultar')}</p>`}
       `;
     } catch (err) {
       resultadoFactus.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+    }
+  }
+  root.querySelector('#btn-probar-factus').addEventListener('click', probarFactus);
+
+  resultadoFactus.addEventListener('click', async (e) => {
+    const usar = e.target.closest('[data-usar-rango]');
+    const reg = e.target.closest('[data-registrar-rango]');
+    if (!usar && !reg) return;
+    const boton = usar || reg;
+    boton.disabled = true;
+    try {
+      if (usar) {
+        await api(`/empresas/${selEmpresa.value}/factus/rango-factura`, { method: 'PUT', body: { rango_id: usar.dataset.usarRango } });
+        formFactus.elements.numbering_range_id_factura.value = usar.dataset.usarRango;
+        toast('Rango asignado a esta empresa', 'ok');
+      } else {
+        const r = await api(`/empresas/${selEmpresa.value}/factus/rangos`, {
+          method: 'POST',
+          body: { prefijo: reg.dataset.registrarRango, resolucion: reg.dataset.resolucion, actual: reg.dataset.desde || 1, usar_para_facturas: true },
+        });
+        if (r.rango?.id) formFactus.elements.numbering_range_id_factura.value = r.rango.id;
+        toast(`Rango ${reg.dataset.registrarRango} registrado en Factus`, 'ok');
+      }
+      await probarFactus();
+    } catch (err) {
+      toast(err.message, 'error');
+      boton.disabled = false;
     }
   });
 
