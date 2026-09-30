@@ -90,7 +90,7 @@ export async function vistaConfiguracion(root) {
             <label><span>Rango de numeración · Facturas</span><input name="numbering_range_id_factura" type="number" placeholder="ej. 389" /></label>
             <label><span>Rango de numeración · Notas crédito</span><input name="numbering_range_id_nota_credito" type="number" placeholder="ej. 1776" /></label>
           </div>
-          <p class="muted" style="margin:0 0 6px">Solo obligatorio si la cuenta tiene más de un rango activo; pulsa "Probar conexión" para verlos.</p>
+          <p class="muted" style="margin:0 0 6px">Es el <b>id interno de Factus</b> que aparece al pulsar "Probar conexión" (no el número de la resolución ni el "hasta"). Déjalo vacío si la cuenta tiene un solo rango.</p>
           <div class="row">
             <label><span>Método de pago por defecto (contado)</span><input name="payment_method_code_default" value="42" /></label>
             <label><span>Municipio (DANE) por defecto</span><input name="municipality_code_default" value="05001" /></label>
