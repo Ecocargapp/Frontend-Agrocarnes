@@ -124,3 +124,5 @@ tr.selected td { background: var(--brand-soft); }
 .items .linea > select { flex: 1 1 100%; }
 .items .linea > input { flex: 1 1 0; }
 .items .linea > .btn-icon { flex: 0 0 auto; }
+label.check { display: flex; flex-direction: row; align-items: center; gap: .5rem; font-size: .9rem; }
+label.check input { width: auto; margin: 0; }

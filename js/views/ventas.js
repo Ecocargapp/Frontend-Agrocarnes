@@ -1,7 +1,7 @@
 import { api, catalogo, invalidar } from '../api.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
-const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn' };
+const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn', no_aplica: '' };
 const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
 export async function vistaVentas(root) {
@@ -38,6 +38,9 @@ export async function vistaVentas(root) {
               </label>
               <label id="v-plazo-label" hidden><span>Plazo (días)</span><input type="number" name="dias_plazo" value="30" min="1" /></label>
             </div>
+            <label class="check" title="Entre centros de costo de la misma razón social (ej. Carnicería → Restaurante): mueve inventario y cartera, pero no genera factura electrónica, porque una empresa no puede facturarse a su propio NIT.">
+              <input type="checkbox" name="venta_interna" value="true" /> Venta interna (misma razón social, sin factura electrónica)
+            </label>
             <div>
               <span class="muted">Productos</span>
               <div class="items" id="v-items"></div>
@@ -171,7 +174,7 @@ export async function vistaVentas(root) {
         { titulo: 'Pago', render: (v) => badge(v.forma_pago === 'credito' ? 'Crédito' : 'Contado', v.forma_pago === 'credito' ? 'warn' : 'ok') },
         { titulo: 'Total', num: true, render: (v) => cop(v.total) },
         { titulo: 'Saldo', num: true, render: (v) => (Number(v.saldo) > 0 ? cop(v.saldo) : '—') },
-        { titulo: 'Estado', render: (v) => v.estado === 'anulada' ? badge('Anulada', 'danger') : badge(v.estado_dian, ESTADO[v.estado_dian] || '') + (v.dian_mensaje && ['error', 'rechazada'].includes(v.estado_dian) ? ` <span class="muted" title="${esc(v.dian_mensaje)}">ⓘ</span>` : '') },
+        { titulo: 'Estado', render: (v) => v.estado === 'anulada' ? badge('Anulada', 'danger') : (v.venta_interna ? badge('interna', '') : badge(v.estado_dian, ESTADO[v.estado_dian] || '')) + (v.dian_mensaje && ['error', 'rechazada'].includes(v.estado_dian) ? ` <span class="muted" title="${esc(v.dian_mensaje)}">ⓘ</span>` : '') },
       ],
       filas,
       filaAttrs: (v) => `class="clickable" data-id="${v.id}"`,
@@ -187,7 +190,7 @@ export async function vistaVentas(root) {
       <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} ·
         Pago: ${badge(f.forma_pago === 'credito' ? 'Crédito' : 'Contado', f.forma_pago === 'credito' ? 'warn' : 'ok')}
         ${f.forma_pago === 'credito' ? ` · Vence: ${esc(dia(f.fecha_vencimiento))} · Saldo: ${cop(f.saldo)}` : ''}
-        ${f.estado === 'anulada' ? ` · ${badge('Anulada', 'danger')}` : ''} · DIAN: ${badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.arco_factura_id ? ` · Arco #${esc(f.arco_factura_id)}` : ''}
+        ${f.estado === 'anulada' ? ` · ${badge('Anulada', 'danger')}` : ''} · DIAN: ${f.venta_interna ? badge('Venta interna · no aplica', '') : badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.arco_factura_id ? ` · Arco #${esc(f.arco_factura_id)}` : ''}
       </p>
       ${f.estado === 'anulada' && f.motivo_anulacion ? `<p class="muted">Motivo de anulación: ${esc(f.motivo_anulacion)}</p>` : ''}
       ${f.cufe ? `<p class="muted">CUFE: <span class="mono" style="word-break:break-all">${esc(f.cufe)}</span>${f.pdf_url ? ` · <a href="${esc(f.pdf_url)}" target="_blank" rel="noopener">Ver representación gráfica</a>` : ''}</p>` : ''}
@@ -255,7 +258,7 @@ export async function vistaVentas(root) {
       method: 'POST',
       body: {
         empresa_id: bodega.empresa_id, bodega_id: bodega.id, cliente_id: selCliente.value || null, items: lineas,
-        forma_pago: d.forma_pago,
+        forma_pago: d.forma_pago, venta_interna: d.venta_interna === 'true',
         ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : { medio_pago: d.medio_pago }),
       },
     });
