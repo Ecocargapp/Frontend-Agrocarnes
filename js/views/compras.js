@@ -1,5 +1,6 @@
 import { api, catalogo, invalidar } from '../api.js';
-import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar } from '../ui.js';
+import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
+import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
 const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
@@ -58,21 +59,12 @@ export async function vistaCompras(root) {
         <div class="card" id="card-prov" hidden>
           <h2>Nuevo proveedor</h2>
           <form id="form-prov">
-            <label><span>Nombre / razón social</span><input name="nombre" required /></label>
-            <div class="row">
-              <label class="w-sm"><span>Tipo doc.</span>
-                <select name="tipo_documento"><option>NIT</option><option>CC</option><option>CE</option></select>
-              </label>
-              <label><span>Número</span><input name="numero_documento" /></label>
-            </div>
-            <div class="row">
-              <label><span>Correo</span><input type="email" name="email" /></label>
-              <label><span>Teléfono</span><input name="telefono" /></label>
-            </div>
+            ${formularioTercero({}, { rol: 'proveedor' })}
             <div class="row">
               <button type="submit" class="btn-primary">Guardar proveedor</button>
               <button type="button" class="btn-secondary" id="btn-cancelar-prov">Cancelar</button>
             </div>
+            <button type="button" class="btn-link" data-exportar-terceros>Descargar terceros en la plantilla de Excel</button>
           </form>
         </div>
       </div>
@@ -187,14 +179,20 @@ export async function vistaCompras(root) {
   });
 
   const cardProv = root.querySelector('#card-prov');
+  activarFormularioTercero(root.querySelector('#form-prov'));
+  cardProv.querySelector('[data-exportar-terceros]').addEventListener('click', async () => {
+    const terceros = await api('/terceros');
+    descargarExcel({ nombreArchivo: 'terceros-plantilla.xlsx', hoja: 'Archivo 1', columnas: COLUMNAS_PLANTILLA, filas: terceros });
+  });
   root.querySelector('#btn-nuevo-prov').addEventListener('click', () => { cardProv.hidden = false; cardProv.querySelector('input').focus(); });
   root.querySelector('#btn-cancelar-prov').addEventListener('click', () => { cardProv.hidden = true; });
   alEnviar(root.querySelector('#form-prov'), async (e) => {
-    const p = await api('/terceros', { method: 'POST', body: { tipo: 'proveedor', ...datosForm(e.target) } });
+    const p = await api('/terceros', { method: 'POST', body: { tipo: 'proveedor', ...leerTercero(e.target) } });
     invalidar('proveedores');
     proveedores.push(p);
     selProv.innerHTML = opciones(proveedores, { vacio: 'Selecciona…', seleccionado: p.id });
     e.target.reset();
+    activarFormularioTercero(e.target);
     cardProv.hidden = true;
     toast(`Proveedor "${p.nombre}" creado`, 'ok');
   });

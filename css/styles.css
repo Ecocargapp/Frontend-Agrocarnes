@@ -126,3 +126,5 @@ tr.selected td { background: var(--brand-soft); }
 .items .linea > .btn-icon { flex: 0 0 auto; }
 label.check { display: flex; flex-direction: row; align-items: center; gap: .5rem; font-size: .9rem; }
 label.check input { width: auto; margin: 0; }
+details.tercero-tributario { margin: 4px 0 8px; }
+details.tercero-tributario > summary { cursor: pointer; font-size: .85rem; color: var(--muted); padding: 6px 0; }

@@ -1,4 +1,5 @@
 import { api, catalogo, invalidar } from '../api.js';
+import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
 const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn', no_aplica: '' };
@@ -64,22 +65,12 @@ export async function vistaVentas(root) {
         <div class="card" id="card-cli" hidden>
           <h2>Nuevo cliente</h2>
           <form id="form-cli">
-            <label><span>Nombre / razón social</span><input name="nombre" required /></label>
-            <div class="row">
-              <label class="w-sm"><span>Tipo doc.</span>
-                <select name="tipo_documento"><option>CC</option><option>NIT</option><option>CE</option></select>
-              </label>
-              <label><span>Número</span><input name="numero_documento" /></label>
-            </div>
-            <label><span>Correo (para enviar la factura electrónica)</span><input type="email" name="email" /></label>
-            <div class="row">
-              <label><span>Dirección</span><input name="direccion" /></label>
-              <label class="w-sm"><span>Ciudad DANE</span><input name="ciudad_id" value="05001" /></label>
-            </div>
+            ${formularioTercero({}, { rol: 'cliente' })}
             <div class="row">
               <button type="submit" class="btn-primary">Guardar cliente</button>
               <button type="button" class="btn-secondary" id="btn-cancelar-cli">Cancelar</button>
             </div>
+            <button type="button" class="btn-link" data-exportar-terceros>Descargar terceros en la plantilla de Excel</button>
           </form>
         </div>
       </div>
@@ -231,14 +222,20 @@ export async function vistaVentas(root) {
   });
 
   const cardCli = root.querySelector('#card-cli');
+  activarFormularioTercero(root.querySelector('#form-cli'));
+  cardCli.querySelector('[data-exportar-terceros]').addEventListener('click', async () => {
+    const terceros = await api('/terceros');
+    descargarExcel({ nombreArchivo: 'terceros-plantilla.xlsx', hoja: 'Archivo 1', columnas: COLUMNAS_PLANTILLA, filas: terceros });
+  });
   root.querySelector('#btn-nuevo-cli').addEventListener('click', () => { cardCli.hidden = false; cardCli.querySelector('input').focus(); });
   root.querySelector('#btn-cancelar-cli').addEventListener('click', () => { cardCli.hidden = true; });
   alEnviar(root.querySelector('#form-cli'), async (e) => {
-    const c = await api('/terceros', { method: 'POST', body: { tipo: 'cliente', ...datosForm(e.target) } });
+    const c = await api('/terceros', { method: 'POST', body: { tipo: 'cliente', ...leerTercero(e.target) } });
     invalidar('clientes');
     clientes.push(c);
     selCliente.innerHTML = opciones(clientes, { vacio: 'Consumidor final', seleccionado: c.id });
     e.target.reset();
+    activarFormularioTercero(e.target);
     cardCli.hidden = true;
     toast(`Cliente "${c.nombre}" creado`, 'ok');
   });
