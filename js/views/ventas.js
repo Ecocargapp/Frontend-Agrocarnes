@@ -115,7 +115,7 @@ export async function vistaVentas(root) {
     existencias = stock.filter((e) => Number(e.cantidad) > 0).map((e) => ({ ...e, precio_venta: precios[e.producto_id] }));
     productos
       .filter((p) => p.maneja_inventario === false && p.empresa_id === bodega?.empresa_id)
-      .forEach((p) => existencias.push({ producto_id: p.id, producto: p.nombre, cantidad: null, unidad_medida: p.unidad_medida, precio_venta: p.precio_venta }));
+      .forEach((p) => existencias.push({ producto_id: p.id, producto: p.codigo ? `${p.codigo} · ${p.nombre}` : p.nombre, cantidad: null, unidad_medida: p.unidad_medida, precio_venta: p.precio_venta }));
     items.innerHTML = '';
     agregarLinea();
     calcularTotal();

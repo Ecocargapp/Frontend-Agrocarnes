@@ -37,7 +37,10 @@ export async function vistaInventario(root) {
             <label><span>Empresa dueña</span>
               <select name="empresa_id" required>${opciones(empresas)}</select>
             </label>
-            <label><span>Nombre</span><input name="nombre" required placeholder="Ej. Lomo de cerdo" /></label>
+            <div class="row">
+              <label class="w-sm"><span>Código</span><input name="codigo" placeholder="Ej. C1002" title="Platos sin inventario: si lo dejas vacío se asigna el siguiente A0001, A0002…" /></label>
+              <label><span>Nombre</span><input name="nombre" required placeholder="Ej. Lomo de cerdo" /></label>
+            </div>
             <div class="row">
               <label><span>Tipo</span>
                 <select name="tipo">
@@ -147,6 +150,7 @@ export async function vistaInventario(root) {
     const nombreEmpresa = (id) => empresas.find((e) => e.id === id)?.nombre || '';
     root.querySelector('#lista-productos').innerHTML = tabla({
       columnas: [
+        { titulo: 'Código', render: (p) => `<input class="mono" style="width:80px" data-id="${p.id}" data-campo="codigo" value="${esc(p.codigo || '')}" placeholder="—" />` },
         { titulo: 'Producto', render: (p) => `${esc(p.nombre)} <span class="muted">(${esc(p.unidad_medida)} · ${esc(nombreEmpresa(p.empresa_id))})</span>` },
         { titulo: 'Código Arco', render: (p) => `<input class="mono" style="width:120px" data-id="${p.id}" data-campo="arco_producto_id" value="${esc(p.arco_producto_id || '')}" placeholder="—" />` },
         { titulo: 'Unidad Factus', render: (p) => `<input class="mono" style="width:80px" data-id="${p.id}" data-campo="factus_unidad_medida_code" value="${esc(p.factus_unidad_medida_code || '')}" placeholder="auto" title="Código UN/CEFACT (ej. KGM, LTR, 94=unidad); vacío = se infiere de la unidad" />` },
