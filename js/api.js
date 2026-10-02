@@ -40,6 +40,21 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+// Descarga un archivo (ej. PDF) autenticado y devuelve un Blob.
+export async function apiArchivo(path) {
+  const res = await fetch(`${API_BASE}${path}`, { headers: session.token ? { Authorization: `Bearer ${session.token}` } : {} });
+  if (res.status === 401) {
+    session.clear();
+    window.dispatchEvent(new CustomEvent('agrocarnes:logout'));
+    throw new ApiError('Sesión expirada, vuelve a entrar', 401);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(data.error || `Error ${res.status}`, res.status);
+  }
+  return res.blob();
+}
+
 // ---- catálogos (se cachean hasta que algo los invalide) ----
 const cache = new Map();
 

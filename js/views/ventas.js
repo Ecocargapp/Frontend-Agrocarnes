@@ -1,4 +1,4 @@
-import { api, catalogo, invalidar } from '../api.js';
+import { api, apiArchivo, catalogo, invalidar } from '../api.js';
 import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
@@ -187,6 +187,7 @@ export async function vistaVentas(root) {
       ${f.cufe ? `<p class="muted">CUFE: <span class="mono" style="word-break:break-all">${esc(f.cufe)}</span>${f.pdf_url ? ` · <a href="${esc(f.pdf_url)}" target="_blank" rel="noopener">Ver representación gráfica</a>` : ''}</p>` : ''}
       ${f.dian_mensaje ? `<p class="${['error', 'rechazada'].includes(f.estado_dian) ? 'error' : 'muted'}">${esc(f.dian_mensaje)}</p>` : ''}
       <p class="row" style="gap:8px">
+        ${f.cufe && !f.arco_factura_id ? `<button type="button" class="btn-primary" data-pdf="${f.id}">Ver / imprimir PDF</button>` : ''}
         ${['pendiente', 'error', 'rechazada', 'sin_configurar'].includes(f.estado_dian) ? `<button type="button" class="btn-secondary" data-dian="reenviar" data-id="${f.id}">Reintentar envío a la DIAN</button>` : ''}
         ${f.arco_factura_id && f.estado_dian !== 'aceptada' ? `<button type="button" class="btn-secondary" data-dian="estado" data-id="${f.id}">Actualizar estado</button>` : ''}
         ${f.estado !== 'anulada' ? `<a class="btn-secondary" style="display:inline-block;text-decoration:none" href="#notas-credito?factura=${f.id}">Nota crédito / Anular</a>` : ''}
@@ -207,6 +208,24 @@ export async function vistaVentas(root) {
   selBodega.addEventListener('change', cargarBodega);
   root.querySelector('#btn-linea').addEventListener('click', agregarLinea);
   root.querySelector('#detalle').addEventListener('click', async (e) => {
+    const pdf = e.target.closest('button[data-pdf]');
+    if (pdf) {
+      // Se abre la pestaña de una vez (antes del await) para que el navegador no la bloquee.
+      const ventana = window.open('', '_blank');
+      if (ventana) ventana.document.write('<p style="font-family:sans-serif">Cargando la factura…</p>');
+      pdf.disabled = true;
+      try {
+        const blob = await apiArchivo(`/ventas/${pdf.dataset.pdf}/pdf`);
+        const url = URL.createObjectURL(blob);
+        if (ventana) ventana.location = url; else window.location = url;
+      } catch (err) {
+        if (ventana) ventana.close();
+        toast(err.message, 'error');
+      } finally {
+        pdf.disabled = false;
+      }
+      return;
+    }
     const btn = e.target.closest('button[data-dian]');
     if (!btn) return;
     btn.disabled = true;
