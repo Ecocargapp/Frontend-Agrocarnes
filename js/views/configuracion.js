@@ -85,6 +85,14 @@ export async function vistaConfiguracion(root) {
             <button type="button" class="btn-secondary" id="btn-probar-factus">Probar conexión</button>
           </div>
           <div id="f-resultado"></div>
+          <div class="logo-factus">
+            <p class="muted" style="margin:12px 0 6px"><b>Logo en las facturas (PDF).</b> Se ajusta solo al tamaño que pide Factus (máx. 300×300 px, menos de 200 KB). Es uno por cuenta de Factus: aplica a todas las empresas que usan esta cuenta.</p>
+            <div class="row">
+              <input type="file" id="f-logo" accept="image/png,image/jpeg" />
+              <button type="button" class="btn-secondary" id="btn-logo-factus" disabled>Subir logo</button>
+            </div>
+            <img id="f-logo-vista" alt="" style="max-width:300px;max-height:150px;margin-top:8px" hidden />
+          </div>
           <hr style="border:0;border-top:1px solid var(--border);margin:6px 0" />
           <div class="row">
             <label><span>Rango de numeración · Facturas</span><input name="numbering_range_id_factura" type="number" placeholder="ej. 389" /></label>
@@ -240,6 +248,37 @@ export async function vistaConfiguracion(root) {
     }
   }
   root.querySelector('#btn-probar-factus').addEventListener('click', probarFactus);
+
+  // Logo: se redimensiona en el navegador (≤300x300, PNG; JPEG si el PNG pasa de 200 KB).
+  const inLogo = root.querySelector('#f-logo');
+  const btnLogo = root.querySelector('#btn-logo-factus');
+  const vistaLogo = root.querySelector('#f-logo-vista');
+  let logoListo = null;
+  inLogo.addEventListener('change', async () => {
+    logoListo = null; btnLogo.disabled = true; vistaLogo.hidden = true;
+    const archivo = inLogo.files[0];
+    if (!archivo) return;
+    const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = URL.createObjectURL(archivo); });
+    const escala = Math.min(1, 300 / img.width, 300 / img.height);
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width * escala); c.height = Math.round(img.height * escala);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    let datos = c.toDataURL('image/png'); let nombre = 'logo.png';
+    if (datos.length * 0.75 >= 200 * 1024) { datos = c.toDataURL('image/jpeg', 0.9); nombre = 'logo.jpg'; }
+    logoListo = { imagen_base64: datos, nombre };
+    vistaLogo.src = datos; vistaLogo.hidden = false; btnLogo.disabled = false;
+  });
+  btnLogo.addEventListener('click', async () => {
+    if (!logoListo) return;
+    btnLogo.disabled = true;
+    try {
+      await api(`/empresas/${selEmpresa.value}/factus/logo`, { method: 'POST', body: logoListo });
+      toast('Logo actualizado en Factus: saldrá en los PDF de las facturas', 'ok');
+    } catch (err) { toast(err.message, 'error'); }
+    finally { btnLogo.disabled = false; }
+  });
 
   resultadoFactus.addEventListener('click', async (e) => {
     const usar = e.target.closest('[data-usar-rango]');
