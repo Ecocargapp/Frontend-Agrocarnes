@@ -102,7 +102,7 @@ tr.selected td { background: var(--brand-soft); }
 .badge.danger { background: #fbe4e2; color: var(--danger); }
 .badge.brand { background: var(--brand-soft); color: var(--brand); }
 
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
 .tabs button { background: none; border: none; padding: 10px 14px; border-bottom: 2px solid transparent; color: var(--muted); font-weight: 500; border-radius: 0; }
 .tabs button.active { color: var(--brand); border-bottom-color: var(--brand); }
 
@@ -128,3 +128,25 @@ label.check { display: flex; flex-direction: row; align-items: center; gap: .5re
 label.check input { width: auto; margin: 0; }
 details.tercero-tributario { margin: 4px 0 8px; }
 details.tercero-tributario > summary { cursor: pointer; font-size: .85rem; color: var(--muted); padding: 6px 0; }
+/* Resumen de un documento (subtotal, IVA, retenciones, neto) */
+.resumen-doc { margin: 10px 0; border-top: 1px dashed var(--border); padding-top: 8px; font-size: .9rem; }
+.resumen-doc > div { display: flex; justify-content: space-between; padding: 2px 0; }
+.resumen-doc > div > span { color: var(--muted); }
+.resumen-doc > div.total { font-size: 1.05rem; border-top: 1px solid var(--border); margin-top: 4px; padding-top: 6px; }
+.resumen-doc > div.total > span { color: inherit; font-weight: 600; }
+.ret-widget { background: var(--bg-soft, rgba(0,0,0,.025)); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
+/* Informes */
+table.informe { width: 100%; border-collapse: collapse; }
+table.informe td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+table.informe td.v { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.informe tr.sub td { font-weight: 600; background: rgba(0,0,0,.03); }
+table.informe tr.tot td { font-weight: 700; font-size: 1.05rem; border-top: 2px solid currentColor; }
+table.informe tr.det td:first-child { padding-left: 24px; color: var(--muted); }
+table.informe td.pct { color: var(--muted); text-align: right; width: 70px; font-size: .85rem; }
+.neg { color: #b42318; }
+.cuadre-ok { color: #1a7f37; font-weight: 600; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpis > div { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.kpis span { display: block; color: var(--muted); font-size: .8rem; }
+.kpis b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.row > .w-fecha { flex: 0 0 160px; }

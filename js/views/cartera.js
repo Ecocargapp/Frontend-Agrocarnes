@@ -50,6 +50,14 @@ export async function vistaCartera(root, params) {
               </label>
             </div>
             <label><span>Notas</span><input name="notas" placeholder="Opcional" /></label>
+            <div id="ap-retenciones">
+              <p class="muted" style="margin:6px 0 4px">¿El cliente nos practicó retenciones al pagar? (quedan como anticipo de impuestos)</p>
+              <div class="row">
+                <label><span>Retefuente</span><input type="number" step="1" min="0" name="retefuente" value="0" /></label>
+                <label><span>ReteIVA</span><input type="number" step="1" min="0" name="reteiva" value="0" /></label>
+                <label><span>ReteICA</span><input type="number" step="1" min="0" name="reteica" value="0" /></label>
+              </div>
+            </div>
             <p class="total" id="ap-total">Total a aplicar: $0</p>
             <button type="submit" class="btn-primary" id="btn-aplicar">Registrar recibo</button>
           </form>
@@ -114,7 +122,7 @@ export async function vistaCartera(root, params) {
         <tbody>${docs.map((d) => `
           <tr>
             <td><input type="checkbox" data-id="${esc(d.id)}" data-saldo="${d.saldo}" checked /></td>
-            <td class="mono">${esc(d.consecutivo || d.numero_factura_proveedor || '—')}</td>
+            <td><span class="mono">${esc(d.consecutivo || d.numero_factura_proveedor || '—')}</span>${d.clase === 'gasto' ? ` ${badge('Gasto', '')}${d.descripcion ? ` <span class="muted">${esc(d.descripcion)}</span>` : ''}` : ''}</td>
             <td>${esc(dia(d.fecha))}</td>
             <td>${esc(dia(d.fecha_vencimiento))}${d.dias_vencido > 0 ? ` <span class="error">(${d.dias_vencido}d)</span>` : ''}</td>
             <td class="num">${cop(d.saldo)}</td>
@@ -135,7 +143,11 @@ export async function vistaCartera(root, params) {
   function calcularAplicar() {
     const total = [...root.querySelectorAll('#documentos [data-id]:checked')]
       .reduce((a, c) => a + (Number(root.querySelector(`[data-valor="${c.dataset.id}"]`)?.value) || 0), 0);
-    root.querySelector('#ap-total').textContent = `Total a aplicar: ${cop(total)}`;
+    const f = root.querySelector('#form-aplicacion');
+    const ret = tab === 'cobrar' ? ['retefuente', 'reteiva', 'reteica'].reduce((a, k) => a + (Number(f.elements[k].value) || 0), 0) : 0;
+    root.querySelector('#ap-total').textContent = ret
+      ? `Total a aplicar: ${cop(total)} · retenciones ${cop(ret)} · dinero recibido ${cop(total - ret)}`
+      : `Total a aplicar: ${cop(total)}`;
   }
 
   function leerAplicaciones() {
@@ -148,10 +160,12 @@ export async function vistaCartera(root, params) {
     tab = nuevo;
     tabsEl.querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     root.querySelector('#btn-aplicar').textContent = tab === 'cobrar' ? 'Registrar recibo' : 'Registrar pago';
+    root.querySelector('#ap-retenciones').hidden = tab !== 'cobrar';
     cargarLista();
   }
 
   tabsEl.querySelectorAll('button[data-tab]').forEach((b) => b.addEventListener('click', () => activarTab(b.dataset.tab)));
+  root.querySelectorAll('#ap-retenciones input').forEach((i) => i.addEventListener('input', calcularAplicar));
   selEmpresa.addEventListener('change', () => {
     empresaId = selEmpresa.value;
     localStorage.setItem('cartera_empresa', empresaId);
@@ -197,9 +211,11 @@ export async function vistaCartera(root, params) {
         body: {
           empresa_id: empresaId, tercero_id: terceroId, fecha: d.fecha, medio_pago: d.medio_pago, notas: d.notas || null,
           aplicaciones: aplicaciones.map((a) => ({ factura_venta_id: a.id, valor: a.valor })),
+          retefuente: Number(d.retefuente) || 0, reteiva: Number(d.reteiva) || 0, reteica: Number(d.reteica) || 0,
         },
       });
-      toast(`Recibo N.° ${r.consecutivo} registrado por ${cop(r.total)}`, 'ok');
+      ['retefuente', 'reteiva', 'reteica'].forEach((k) => { e.target.elements[k].value = 0; });
+      toast(`Recibo N.° ${r.consecutivo} registrado por ${cop(r.total)}${r.recibido !== r.total ? ` (entran ${cop(r.recibido)})` : ''}`, 'ok');
     } else {
       const r = await api('/cartera/pagos', {
         method: 'POST',

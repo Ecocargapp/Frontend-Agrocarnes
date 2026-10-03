@@ -1,6 +1,7 @@
 import { api, catalogo, invalidar } from '../api.js';
 import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
+import { widgetRetencion } from '../retencion-widget.js';
 
 const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
@@ -12,7 +13,7 @@ export async function vistaCompras(root) {
   root.innerHTML = html`
     <div class="page-head">
       <h1>Compras</h1>
-      <span class="hint">Factura del proveedor (ej. Agro Franpabel). Cada línea entra al inventario al costo facturado.</span>
+      <span class="hint">Mercancía para vender o transformar (entra al inventario y luego al costo de ventas). Arriendos, servicios, nómina y activos fijos van en <a href="#gastos">Gastos</a>.</span>
     </div>
     <div class="grid">
       <div>
@@ -52,7 +53,8 @@ export async function vistaCompras(root) {
               <div class="items" id="c-items"></div>
               <button type="button" class="btn-link" id="btn-linea">+ Agregar línea</button>
             </div>
-            <p class="total" id="c-total">Total: $0</p>
+            <div id="c-retencion"></div>
+            <div class="resumen-doc" id="c-total"></div>
             <button type="submit" class="btn-primary">Registrar compra</button>
           </form>
         </div>
@@ -114,11 +116,12 @@ export async function vistaCompras(root) {
     div.innerHTML = html`
       <select data-campo="producto_id" required>${opciones(productosDe(selEmpresa.value), { vacio: 'Producto…', texto: (p) => `${p.nombre} (${p.unidad_medida})` })}</select>
       <input class="w-sm" data-campo="cantidad" type="number" step="0.001" min="0.001" placeholder="Cant." required />
-      <input class="w-sm" data-campo="costo_unitario" type="number" step="1" min="0" placeholder="Costo u." required />
+      <input class="w-sm" data-campo="costo_unitario" type="number" step="1" min="0" placeholder="Costo u. sin IVA" required />
+      <select class="w-sm" data-campo="iva_pct" title="IVA de la línea"><option value="0">IVA 0%</option><option value="5">5%</option><option value="19">19%</option></select>
       <button type="button" class="btn-icon w-xs" title="Quitar">✕</button>
     `;
     div.querySelector('button').addEventListener('click', () => { div.remove(); calcularTotal(); });
-    div.querySelectorAll('input').forEach((i) => i.addEventListener('input', calcularTotal));
+    div.querySelectorAll('input, select').forEach((i) => i.addEventListener('input', calcularTotal));
     items.appendChild(div);
   }
 
@@ -128,12 +131,23 @@ export async function vistaCompras(root) {
       bodega_id: selBodega.value,
       cantidad: Number(l.querySelector('[data-campo=cantidad]').value),
       costo_unitario: Number(l.querySelector('[data-campo=costo_unitario]').value),
+      iva_pct: Number(l.querySelector('[data-campo=iva_pct]').value) || 0,
     }));
   }
 
+  let ret = null;
+  function pintarTotales() {
+    const ls = leerLineas();
+    const sub = ls.reduce((a, l) => a + (l.cantidad || 0) * (l.costo_unitario || 0), 0);
+    const iva = ls.reduce((a, l) => a + (l.cantidad || 0) * (l.costo_unitario || 0) * (l.iva_pct || 0) / 100, 0);
+    const r = ret ? ret.total() : 0;
+    totalEl.innerHTML = `<div><span>Subtotal</span><b>${cop(sub)}</b></div><div><span>IVA descontable</span><b>${cop(iva)}</b></div>`
+      + `<div><span>Retenciones</span><b>− ${cop(r)}</b></div><div class="total"><span>Neto a pagar al proveedor</span><b>${cop(sub + iva - r)}</b></div>`;
+    return { sub, iva };
+  }
   function calcularTotal() {
-    const t = leerLineas().reduce((a, l) => a + (l.cantidad || 0) * (l.costo_unitario || 0), 0);
-    totalEl.textContent = `Total: ${cop(t)}`;
+    const { sub, iva } = pintarTotales();
+    ret?.recalcular({ empresa_id: selEmpresa.value, proveedor_id: selProv.value, base: sub, iva });
   }
 
   async function cargarLista() {
@@ -146,7 +160,9 @@ export async function vistaCompras(root) {
         { titulo: 'Factura', render: (c) => `<span class="mono">${esc(c.numero_factura_proveedor || '—')}</span>` },
         { titulo: 'Líneas', num: true, campo: 'items' },
         { titulo: 'Pago', render: (c) => badge(c.forma_pago === 'credito' ? 'Crédito' : 'Contado', c.forma_pago === 'credito' ? 'warn' : 'ok') },
-        { titulo: 'Total', num: true, render: (c) => cop(c.total) },
+        { titulo: 'IVA', num: true, render: (c) => (Number(c.iva) ? cop(c.iva) : '—') },
+        { titulo: 'Retención', num: true, render: (c) => { const r = Number(c.retefuente) + Number(c.reteiva) + Number(c.reteica); return r ? cop(r) : '—'; } },
+        { titulo: 'Neto', num: true, render: (c) => cop(c.total) },
         { titulo: 'Saldo', num: true, render: (c) => (Number(c.saldo) > 0 ? cop(c.saldo) : '—') },
       ],
       filas: compras,
@@ -165,6 +181,7 @@ export async function vistaCompras(root) {
         { titulo: 'Bodega', campo: 'bodega' },
         { titulo: 'Cantidad', num: true, render: (l) => `${num(l.cantidad)} ${esc(l.unidad_medida)}` },
         { titulo: 'Costo u.', num: true, render: (l) => cop(l.costo_unitario) },
+        { titulo: 'IVA', num: true, render: (l) => `${Number(l.iva_pct || 0)}%` },
         { titulo: 'Subtotal', num: true, render: (l) => cop(Number(l.cantidad) * Number(l.costo_unitario)) },
       ],
       filas: lineas,
@@ -208,11 +225,12 @@ export async function vistaCompras(root) {
       method: 'POST',
       body: {
         empresa_id: d.empresa_id, proveedor_id: d.proveedor_id, numero_factura_proveedor: d.numero_factura_proveedor || null, fecha: d.fecha, items: lineas,
-        forma_pago: d.forma_pago,
+        forma_pago: d.forma_pago, ...ret.leer(),
         ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : { medio_pago: d.medio_pago }),
       },
     });
-    toast(`Compra registrada por ${cop(r.total)}`, 'ok');
+    toast(`Compra registrada · neto a pagar ${cop(r.total)}${r.retefuente ? ` (retención ${cop(r.retefuente)})` : ''}`, 'ok');
+    ret.reiniciar();
     form.querySelector('[name=numero_factura_proveedor]').value = '';
     items.innerHTML = '';
     agregarLinea();
@@ -220,6 +238,10 @@ export async function vistaCompras(root) {
     cargarLista();
   });
 
+  ret = await widgetRetencion(root.querySelector('#c-retencion'), { alCambiar: pintarTotales });
+  selProv.addEventListener('change', calcularTotal);
+  selEmpresa.addEventListener('change', calcularTotal);
   cargarBodegas();
+  calcularTotal();
   await cargarLista();
 }
