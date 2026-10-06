@@ -2,8 +2,9 @@ import { api, catalogo, invalidar } from '../api.js';
 import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 import { widgetRetencion } from '../retencion-widget.js';
+import { selectorPago } from '../pago-widget.js';
+import { imprimirEgreso } from '../comprobante-egreso.js';
 
-const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
 export async function vistaCompras(root) {
   const [empresas, bodegas, productos, proveedores] = await Promise.all([
@@ -43,11 +44,10 @@ export async function vistaCompras(root) {
                   <option value="credito">Crédito</option>
                 </select>
               </label>
-              <label id="c-medio-pago-label"><span>Medio de pago</span>
-                <select name="medio_pago">${MEDIOS_PAGO.map((m) => `<option value="${m}"${m === 'transferencia' ? ' selected' : ''}>${esc(m[0].toUpperCase() + m.slice(1))}</option>`).join('')}</select>
-              </label>
+              
               <label id="c-plazo-label" hidden><span>Plazo (días)</span><input type="number" name="dias_plazo" value="30" min="1" /></label>
             </div>
+            <div id="c-medio-pago-label" class="pago-box"></div>
             <div>
               <span class="muted">Líneas</span>
               <div class="items" id="c-items"></div>
@@ -56,6 +56,7 @@ export async function vistaCompras(root) {
             <div id="c-retencion"></div>
             <div class="resumen-doc" id="c-total"></div>
             <button type="submit" class="btn-primary">Registrar compra</button>
+            <p class="aviso-egreso" id="c-egreso" hidden></p>
           </form>
         </div>
         <div class="card" id="card-prov" hidden>
@@ -226,10 +227,12 @@ export async function vistaCompras(root) {
       body: {
         empresa_id: d.empresa_id, proveedor_id: d.proveedor_id, numero_factura_proveedor: d.numero_factura_proveedor || null, fecha: d.fecha, items: lineas,
         forma_pago: d.forma_pago, ...ret.leer(),
-        ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : { medio_pago: d.medio_pago }),
+        ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : (({ medio_pago, cuenta_pago_id, referencia }) => ({ medio_pago, cuenta_pago_id, referencia_pago: referencia }))(pago.leer())),
       },
     });
     toast(`Compra registrada · neto a pagar ${cop(r.total)}${r.retefuente ? ` (retención ${cop(r.retefuente)})` : ''}`, 'ok');
+    avisoEgreso(r.egreso);
+    pago.limpiar();
     ret.reiniciar();
     form.querySelector('[name=numero_factura_proveedor]').value = '';
     items.innerHTML = '';
@@ -239,6 +242,15 @@ export async function vistaCompras(root) {
   });
 
   ret = await widgetRetencion(root.querySelector('#c-retencion'), { alCambiar: pintarTotales });
+  const pago = await selectorPago(root.querySelector('#c-medio-pago-label'), { empresa: () => selEmpresa.value, sentido: 'egreso', medioInicial: 'transferencia' });
+  selEmpresa.addEventListener('change', pago.recargar);
+  const avisoEgreso = (eg) => {
+    const box = root.querySelector('#c-egreso');
+    if (!eg) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = `Comprobante de egreso <b>N.° ${eg.consecutivo}</b> · ${cop(eg.total)} desde ${esc(eg.cuenta || 'caja/banco')} <button type="button" class="btn-link">Imprimir</button>`;
+    box.querySelector('button').onclick = () => imprimirEgreso(eg.id);
+  };
   selProv.addEventListener('change', calcularTotal);
   selEmpresa.addEventListener('change', calcularTotal);
   cargarBodegas();

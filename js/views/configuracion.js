@@ -1,5 +1,6 @@
 import { api, catalogo, invalidar } from '../api.js';
-import { html, esc, toast, opciones, tabla, badge, alEnviar } from '../ui.js';
+import { html, esc, cop, toast, opciones, tabla, badge, alEnviar, datosForm } from '../ui.js';
+import { invalidarCuentasPago } from '../pago-widget.js';
 
 export async function vistaConfiguracion(root) {
   const empresas = await catalogo('empresas', true);
@@ -128,6 +129,28 @@ export async function vistaConfiguracion(root) {
             ${badge('sin_configurar', '')} la empresa no tiene cuenta configurada en el proveedor activo
           </p>
         </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Cajas y cuentas bancarias</h2>
+      <p class="muted">De aquí sale el dinero de los egresos (compras, gastos y pagos a proveedores) y aquí entra el de los recibos. Cada una tiene su propia cuenta contable, así el balance muestra el saldo de cada banco.</p>
+      <div class="grid">
+        <form id="form-cuenta-pago">
+          <div class="row">
+            <label><span>Empresa</span><select name="empresa_id" required>${opciones(empresas)}</select></label>
+            <label class="w-sm"><span>Tipo</span>
+              <select name="tipo" id="cp-tipo"><option value="banco">Cuenta bancaria</option><option value="caja">Caja</option><option value="tarjeta_credito">Tarjeta de crédito</option></select>
+            </label>
+          </div>
+          <div class="row" data-cp="banco">
+            <label><span>Banco</span><input name="banco" placeholder="Ej. Bancolombia" /></label>
+            <label class="w-sm" data-cp="solo-banco"><span>Tipo de cuenta</span><select name="tipo_cuenta"><option value="ahorros">Ahorros</option><option value="corriente">Corriente</option></select></label>
+            <label class="w-sm"><span>Número</span><input name="numero" placeholder="Ej. 123-456789-01" /></label>
+          </div>
+          <label><span>Nombre para mostrar</span><input name="nombre" placeholder="Opcional: se arma con banco, tipo y últimos dígitos" /></label>
+          <button type="submit" class="btn-primary">Agregar</button>
+        </form>
+        <div id="lista-cuentas-pago"></div>
       </div>
     </div>
   `;
@@ -326,6 +349,49 @@ export async function vistaConfiguracion(root) {
     formFactus.elements.password.value = '';
     formFactus.elements.client_secret.value = '';
   });
+
+  // ----------------------------------------------- cajas y cuentas bancarias
+  const formCp = root.querySelector('#form-cuenta-pago');
+  const selTipoCp = root.querySelector('#cp-tipo');
+  const tipoCp = () => {
+    formCp.querySelector('[data-cp=banco]').hidden = selTipoCp.value === 'caja';
+    formCp.querySelector('[data-cp=solo-banco]').hidden = selTipoCp.value !== 'banco';
+  };
+  selTipoCp.addEventListener('change', tipoCp); tipoCp();
+  const NOMBRE_TIPO = { caja: 'Caja', banco: 'Banco', tarjeta_credito: 'Tarjeta de crédito' };
+  async function cargarCuentasPago() {
+    const cuentas = await api('/cuentas-pago?todas=1');
+    root.querySelector('#lista-cuentas-pago').innerHTML = tabla({
+      columnas: [
+        { titulo: 'Empresa', campo: 'empresa' },
+        { titulo: 'Cuenta', render: (c) => `${badge(NOMBRE_TIPO[c.tipo], c.tipo === 'caja' ? 'ok' : c.tipo === 'banco' ? 'brand' : 'warn')} ${esc(c.nombre)}${c.numero ? `<br><span class="muted">N.° ${esc(c.numero)}</span>` : ''}` },
+        { titulo: 'PUC', render: (c) => `<span class="mono">${esc(c.cuenta_contable)}</span>` },
+        { titulo: 'Saldo', num: true, render: (c) => `<span class="${c.saldo < 0 && c.tipo !== 'tarjeta_credito' ? 'neg' : ''}">${cop(c.saldo)}</span>` },
+        { titulo: '', render: (c) => `<button type="button" class="btn-link" data-cp-id="${c.id}" data-activa="${c.activa}">${c.activa ? 'Desactivar' : 'Activar'}</button>` },
+      ],
+      filas: cuentas,
+      vacio: 'Sin cuentas.',
+    });
+  }
+  root.querySelector('#lista-cuentas-pago').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-cp-id]');
+    if (!b) return;
+    try {
+      await api(`/cuentas-pago/${b.dataset.cpId}`, { method: 'PATCH', body: { activa: b.dataset.activa !== 'true' } });
+      invalidarCuentasPago();
+      await cargarCuentasPago();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+  alEnviar(formCp, async () => {
+    const d = datosForm(formCp);
+    if (d.tipo !== 'banco') delete d.tipo_cuenta;
+    const c = await api('/cuentas-pago', { method: 'POST', body: d });
+    invalidarCuentasPago();
+    toast(`"${c.nombre}" agregada (cuenta contable ${c.cuenta_contable})`, 'ok');
+    ['banco', 'numero', 'nombre'].forEach((k) => { formCp.elements[k].value = ''; });
+    await cargarCuentasPago();
+  });
+  cargarCuentasPago();
 
   await cargarTodo();
 }

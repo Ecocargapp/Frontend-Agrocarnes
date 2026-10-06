@@ -1,8 +1,9 @@
 // Cartera: cuentas por cobrar (clientes) y por pagar (proveedores).
+import { selectorPago } from '../pago-widget.js';
+import { imprimirEgreso } from '../comprobante-egreso.js';
 import { api, catalogo } from '../api.js';
 import { html, esc, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
-const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
 export async function vistaCartera(root, params) {
   const empresas = await catalogo('empresas');
@@ -36,6 +37,10 @@ export async function vistaCartera(root, params) {
           </div>
           <div id="lista-terceros"></div>
         </div>
+        <div class="card" id="card-egresos" hidden>
+          <h2>Comprobantes de egreso</h2>
+          <div id="lista-egresos"></div>
+        </div>
       </div>
       <div>
         <div class="card" id="card-detalle" hidden>
@@ -45,10 +50,9 @@ export async function vistaCartera(root, params) {
           <form id="form-aplicacion">
             <div class="row">
               <label class="w-sm"><span>Fecha</span><input type="date" name="fecha" value="${hoy()}" /></label>
-              <label><span>Medio de pago</span>
-                <select name="medio_pago">${MEDIOS_PAGO.map((m) => `<option value="${m}">${esc(m[0].toUpperCase() + m.slice(1))}</option>`).join('')}</select>
-              </label>
+
             </div>
+            <div id="ap-pago"></div>
             <label><span>Notas</span><input name="notas" placeholder="Opcional" /></label>
             <div id="ap-retenciones">
               <p class="muted" style="margin:6px 0 4px">¿El cliente nos practicó retenciones al pagar? (quedan como anticipo de impuestos)</p>
@@ -161,14 +165,46 @@ export async function vistaCartera(root, params) {
     tabsEl.querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     root.querySelector('#btn-aplicar').textContent = tab === 'cobrar' ? 'Registrar recibo' : 'Registrar pago';
     root.querySelector('#ap-retenciones').hidden = tab !== 'cobrar';
+    root.querySelector('#card-egresos').hidden = tab === 'cobrar';
+    montarPago();
     cargarLista();
+    if (tab !== 'cobrar') cargarEgresos();
   }
+
+  let pago = null;
+  async function montarPago() {
+    pago = await selectorPago(root.querySelector('#ap-pago'), {
+      empresa: () => empresaId, sentido: tab === 'cobrar' ? 'ingreso' : 'egreso', medioInicial: tab === 'cobrar' ? 'efectivo' : 'transferencia',
+    });
+  }
+
+  async function cargarEgresos() {
+    const egresos = await api(`/cartera/pagos${empresaId ? `?empresa_id=${empresaId}` : ''}`);
+    root.querySelector('#lista-egresos').innerHTML = tabla({
+      columnas: [
+        { titulo: 'N.°', render: (p) => `<span class="mono">CE-${esc(p.consecutivo)}</span>` },
+        { titulo: 'Fecha', render: (p) => dia(p.fecha) },
+        { titulo: 'Proveedor', render: (p) => `${esc(p.proveedor)}${empresaId ? '' : `<br><span class="muted">${esc(p.empresa)}</span>`}` },
+        { titulo: 'Medio · cuenta', render: (p) => `${esc(p.medio_pago)}${p.cuenta_pago ? `<br><span class="muted">${esc(p.cuenta_pago)}</span>` : ''}${p.referencia ? `<br><span class="muted">Ref. ${esc(p.referencia)}</span>` : ''}` },
+        { titulo: 'Valor', num: true, render: (p) => cop(p.total) },
+        { titulo: '', render: (p) => `<button type="button" class="btn-link" data-egreso="${p.id}">Imprimir</button>` },
+      ],
+      filas: egresos,
+      vacio: 'Todavía no hay egresos.',
+    });
+  }
+  root.querySelector('#lista-egresos').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-egreso]');
+    if (b) imprimirEgreso(b.dataset.egreso);
+  });
 
   tabsEl.querySelectorAll('button[data-tab]').forEach((b) => b.addEventListener('click', () => activarTab(b.dataset.tab)));
   root.querySelectorAll('#ap-retenciones input').forEach((i) => i.addEventListener('input', calcularAplicar));
   selEmpresa.addEventListener('change', () => {
     empresaId = selEmpresa.value;
     localStorage.setItem('cartera_empresa', empresaId);
+    pago?.recargar();
+    if (tab !== 'cobrar') cargarEgresos();
     cargarResumen();
     cargarLista();
   });
@@ -209,7 +245,7 @@ export async function vistaCartera(root, params) {
       const r = await api('/cartera/recibos', {
         method: 'POST',
         body: {
-          empresa_id: empresaId, tercero_id: terceroId, fecha: d.fecha, medio_pago: d.medio_pago, notas: d.notas || null,
+          empresa_id: empresaId, tercero_id: terceroId, fecha: d.fecha, notas: d.notas || null, ...pago.leer(),
           aplicaciones: aplicaciones.map((a) => ({ factura_venta_id: a.id, valor: a.valor })),
           retefuente: Number(d.retefuente) || 0, reteiva: Number(d.reteiva) || 0, reteica: Number(d.reteica) || 0,
         },
@@ -220,11 +256,13 @@ export async function vistaCartera(root, params) {
       const r = await api('/cartera/pagos', {
         method: 'POST',
         body: {
-          empresa_id: empresaId, tercero_id: seleccionado, fecha: d.fecha, medio_pago: d.medio_pago, notas: d.notas || null,
+          empresa_id: empresaId, tercero_id: seleccionado, fecha: d.fecha, notas: d.notas || null, ...pago.leer(),
           aplicaciones: aplicaciones.map((a) => ({ compra_id: a.id, valor: a.valor })),
         },
       });
-      toast(`Pago N.° ${r.consecutivo} registrado por ${cop(r.total)}`, 'ok');
+      toast(`Comprobante de egreso N.° ${r.consecutivo} por ${cop(r.total)}${r.cuenta ? ` desde ${r.cuenta}` : ''}`, 'ok');
+      imprimirEgreso(r.id);
+      cargarEgresos();
     }
     await Promise.all([cargarResumen(), cargarLista()]);
   });

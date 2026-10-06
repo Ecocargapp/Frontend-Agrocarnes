@@ -150,3 +150,5 @@ table.informe td.pct { color: var(--muted); text-align: right; width: 70px; font
 .kpis span { display: block; color: var(--muted); font-size: .8rem; }
 .kpis b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .row > .w-fecha { flex: 0 0 160px; }
+.pago-box { margin-top: 2px; }
+.aviso-egreso { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--brand-soft); font-size: .9rem; }

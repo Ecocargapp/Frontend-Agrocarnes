@@ -1,9 +1,9 @@
 import { api, apiArchivo, catalogo, invalidar } from '../api.js';
+import { selectorPago } from '../pago-widget.js';
 import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
 const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn', no_aplica: '' };
-const MEDIOS_PAGO = ['efectivo', 'transferencia', 'tarjeta', 'otro'];
 
 export async function vistaVentas(root) {
   const [bodegas, clientes] = await Promise.all([catalogo('bodegas'), catalogo('clientes')]);
@@ -34,11 +34,10 @@ export async function vistaVentas(root) {
                   <option value="credito">Crédito</option>
                 </select>
               </label>
-              <label id="v-medio-pago-label"><span>Medio de pago</span>
-                <select name="medio_pago">${MEDIOS_PAGO.map((m) => `<option value="${m}">${esc(m[0].toUpperCase() + m.slice(1))}</option>`).join('')}</select>
-              </label>
+              
               <label id="v-plazo-label" hidden><span>Plazo (días)</span><input type="number" name="dias_plazo" value="30" min="1" /></label>
             </div>
+            <div id="v-medio-pago-label" class="pago-box"></div>
             <label class="check" title="Entre centros de costo de la misma razón social (ej. Carnicería → Restaurante): mueve inventario y cartera, pero no genera factura electrónica, porque una empresa no puede facturarse a su propio NIT.">
               <input type="checkbox" name="venta_interna" value="true" /> Venta interna (misma razón social, sin factura electrónica)
             </label>
@@ -205,7 +204,10 @@ export async function vistaVentas(root) {
     `;
   }
 
+  const empresaVenta = () => bodegas.find((b) => b.id === selBodega.value)?.empresa_id;
+  const pago = await selectorPago(root.querySelector('#v-medio-pago-label'), { empresa: empresaVenta, sentido: 'ingreso', medioInicial: 'efectivo' });
   selBodega.addEventListener('change', cargarBodega);
+  selBodega.addEventListener('change', pago.recargar);
   root.querySelector('#btn-linea').addEventListener('click', agregarLinea);
   root.querySelector('#detalle').addEventListener('click', async (e) => {
     const pdf = e.target.closest('button[data-pdf]');
@@ -275,10 +277,11 @@ export async function vistaVentas(root) {
       body: {
         empresa_id: bodega.empresa_id, bodega_id: bodega.id, cliente_id: selCliente.value || null, items: lineas,
         forma_pago: d.forma_pago, venta_interna: d.venta_interna === 'true',
-        ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : { medio_pago: d.medio_pago }),
+        ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : (({ medio_pago, cuenta_pago_id, referencia }) => ({ medio_pago, cuenta_pago_id, referencia_pago: referencia }))(pago.leer())),
       },
     });
     toast(`Factura ${r.consecutivo} registrada`, 'ok');
+    pago.limpiar();
     await Promise.all([cargarBodega(), cargarLista()]);
     verDetalle(r.id);
   });
