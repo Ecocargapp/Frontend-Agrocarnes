@@ -213,7 +213,8 @@ export async function vistaInformes(root, params) {
         <div class="grid" style="margin-top:12px">
           <table class="informe">
             <tr class="sub"><td>A pagar a la DIAN (formulario 350)</td><td></td></tr>
-            <tr><td>Retención en la fuente</td>${v(d.a_pagar.retefuente)}</tr>
+            <tr><td>Retención en la fuente (compras y servicios)</td>${v(d.a_pagar.retefuente)}</tr>
+            <tr><td>Retención en la fuente por salarios (nómina)</td>${v(d.a_pagar.salarios || 0)}</tr>
             <tr><td>Retención de IVA</td>${v(d.a_pagar.reteiva)}</tr>
             <tr class="tot"><td>Total formulario 350</td>${v(d.a_pagar.total_formulario_350)}</tr>
             <tr><td>ReteICA a pagar al municipio</td>${v(d.a_pagar.reteica)}</tr>

@@ -165,3 +165,10 @@ table.informe td.pct { color: var(--muted); text-align: right; width: 70px; font
 .modal textarea { width: 100%; font: inherit; }
 .modal-botones { justify-content: flex-end; margin-top: 12px; }
 tr.anulado td { opacity: .55; }
+
+/* Nómina */
+details.novedad { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 8px 0; background: var(--card); }
+details.novedad > summary { cursor: pointer; font-weight: 500; padding: 2px 0; }
+details.novedad[open] > summary { margin-bottom: 8px; }
+label.chk { flex-direction: row; align-items: center; gap: 6px; display: flex; }
+label.chk input { width: auto; }

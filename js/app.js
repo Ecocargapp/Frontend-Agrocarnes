@@ -10,6 +10,7 @@ import { vistaNotasCredito } from './views/notas-credito.js';
 import { vistaConfiguracion } from './views/configuracion.js';
 import { vistaGastos } from './views/gastos.js';
 import { vistaInformes } from './views/informes.js';
+import { vistaNomina } from './views/nomina.js';
 
 const vistas = {
   inventario: vistaInventario,
@@ -20,6 +21,7 @@ const vistas = {
   ventas: vistaVentas,
   cartera: vistaCartera,
   'notas-credito': vistaNotasCredito,
+  nomina: vistaNomina,
   informes: vistaInformes,
   configuracion: vistaConfiguracion,
 };

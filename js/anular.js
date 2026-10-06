@@ -89,6 +89,10 @@ const TIPOS = {
     'Se elimina su asiento: el dinero vuelve a la caja, banco o tarjeta de donde había salido.'] },
   traslado: { titulo: 'este traslado', ruta: (id) => `/traslados/${id}/anular`, consecuencias: [
     'El producto vuelve de la bodega de destino a la de origen (si ya se usó en destino, no se podrá anular).'] },
+  nomina: { titulo: 'esta nómina', ruta: (id) => `/nomina/${id}/anular`, consecuencias: [
+    'Si ya fue aceptada por la DIAN, se envía una NOTA DE AJUSTE de eliminación por Factus.',
+    'Se elimina su asiento contable (gasto de personal, aportes y el pago al trabajador).',
+    'Luego puedes volver a liquidar la nómina de ese periodo con los datos correctos.'] },
   produccion: { titulo: 'esta orden de producción', ruta: (id) => `/produccion/${id}/anular`, consecuencias: [
     'Sale del inventario el producto terminado y vuelven los insumos que se consumieron.'] },
 };
@@ -109,7 +113,7 @@ export function activarAnulaciones(contenedor, alTerminar) {
         toast(`Nota crédito ${r.consecutivo} emitida: la factura quedó anulada`, 'ok');
       } else {
         const r = await api(tipo.ruta(b.dataset.id), { method: 'POST', body: { motivo } });
-        const extra = r.egresos_anulados ? ` (y ${r.egresos_anulados} egreso)` : r.recibos_anulados ? ` (y ${r.recibos_anulados} recibo)` : '';
+        const extra = r.nota_ajuste?.numero ? ` con la nota de ajuste ${r.nota_ajuste.numero}` : r.egresos_anulados ? ` (y ${r.egresos_anulados} egreso)` : r.recibos_anulados ? ` (y ${r.recibos_anulados} recibo)` : '';
         toast(`Se anuló ${b.dataset.titulo || tipo.titulo}${extra}`, 'ok');
       }
       await alTerminar?.();
