@@ -2,6 +2,11 @@ import { api, apiArchivo, catalogo, invalidar } from '../api.js';
 import { selectorPago } from '../pago-widget.js';
 import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
+import { botonAnular, activarAnulaciones } from '../anular.js';
+
+// Ya fue enviada a la DIAN: se anula con nota crédito (igual que en el servidor).
+const esElectronica = (f) => !f.venta_interna && Boolean(f.arco_factura_id || f.cufe || ['enviada', 'aceptada'].includes(f.estado_dian));
+const botonAnularFactura = (f) => (f.estado === 'anulada' ? '' : botonAnular(esElectronica(f) ? 'factura_electronica' : 'factura', f.id, `data-titulo="la factura ${esc(f.consecutivo || '')}"`));
 
 const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn', no_aplica: '' };
 
@@ -165,9 +170,10 @@ export async function vistaVentas(root) {
         { titulo: 'Total', num: true, render: (v) => cop(v.total) },
         { titulo: 'Saldo', num: true, render: (v) => (Number(v.saldo) > 0 ? cop(v.saldo) : '—') },
         { titulo: 'Estado', render: (v) => v.estado === 'anulada' ? badge('Anulada', 'danger') : (v.venta_interna ? badge('interna', '') : badge(v.estado_dian, ESTADO[v.estado_dian] || '')) + (v.dian_mensaje && ['error', 'rechazada'].includes(v.estado_dian) ? ` <span class="muted" title="${esc(v.dian_mensaje)}">ⓘ</span>` : '') },
+        { titulo: '', render: botonAnularFactura },
       ],
       filas,
-      filaAttrs: (v) => `class="clickable" data-id="${v.id}"`,
+      filaAttrs: (v) => `class="clickable${v.estado === 'anulada' ? ' anulado' : ''}" data-id="${v.id}"`,
     });
   }
 
@@ -189,7 +195,7 @@ export async function vistaVentas(root) {
         ${f.cufe && !f.arco_factura_id ? `<button type="button" class="btn-primary" data-pdf="${f.id}">Ver / imprimir PDF</button>` : ''}
         ${['pendiente', 'error', 'rechazada', 'sin_configurar'].includes(f.estado_dian) ? `<button type="button" class="btn-secondary" data-dian="reenviar" data-id="${f.id}">Reintentar envío a la DIAN</button>` : ''}
         ${f.arco_factura_id && f.estado_dian !== 'aceptada' ? `<button type="button" class="btn-secondary" data-dian="estado" data-id="${f.id}">Actualizar estado</button>` : ''}
-        ${f.estado !== 'anulada' ? `<a class="btn-secondary" style="display:inline-block;text-decoration:none" href="#notas-credito?factura=${f.id}">Nota crédito / Anular</a>` : ''}
+        ${f.estado !== 'anulada' ? `<a class="btn-secondary" style="display:inline-block;text-decoration:none" href="#notas-credito?factura=${f.id}">Nota crédito</a> ${botonAnularFactura(f)}` : ''}
       </p>
       ${tabla({
         columnas: [
@@ -236,6 +242,11 @@ export async function vistaVentas(root) {
       toast(r.estado === 'aceptada' ? 'Factura aceptada por la DIAN' : `Estado: ${r.estado}${r.mensaje ? ` · ${r.mensaje}` : ''}`, r.estado === 'aceptada' ? 'ok' : '');
       await Promise.all([cargarLista(), verDetalle(btn.dataset.id)]);
     } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  });
+  activarAnulaciones(root.querySelector('#lista-ventas'), cargarLista);
+  activarAnulaciones(root.querySelector('#detalle'), async () => {
+    const id = root.querySelector('#detalle [data-anular]')?.dataset.id;
+    await Promise.all([cargarLista(), id && verDetalle(id)]);
   });
   root.querySelector('#lista-ventas').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');

@@ -4,6 +4,7 @@ import { html, esc, num, cop, dia, hoy, toast, opciones, tabla, badge, datosForm
 import { widgetRetencion } from '../retencion-widget.js';
 import { selectorPago } from '../pago-widget.js';
 import { imprimirEgreso } from '../comprobante-egreso.js';
+import { columnaAnular, claseAnulado, activarAnulaciones } from '../anular.js';
 
 
 export async function vistaCompras(root) {
@@ -165,9 +166,10 @@ export async function vistaCompras(root) {
         { titulo: 'Retención', num: true, render: (c) => { const r = Number(c.retefuente) + Number(c.reteiva) + Number(c.reteica); return r ? cop(r) : '—'; } },
         { titulo: 'Neto', num: true, render: (c) => cop(c.total) },
         { titulo: 'Saldo', num: true, render: (c) => (Number(c.saldo) > 0 ? cop(c.saldo) : '—') },
+        columnaAnular('compra', (c) => `la compra ${c.numero_factura_proveedor || ''} de ${c.proveedor}`),
       ],
       filas: compras,
-      filaAttrs: (c) => `class="clickable" data-id="${c.id}" data-titulo="${esc(`${c.proveedor} · ${dia(c.fecha)}`)}"`,
+      filaAttrs: (c) => `class="clickable${claseAnulado(c)}" data-id="${c.id}" data-titulo="${esc(`${c.proveedor} · ${dia(c.fecha)}`)}"`,
     });
   }
 
@@ -191,6 +193,7 @@ export async function vistaCompras(root) {
 
   selEmpresa.addEventListener('change', cargarBodegas);
   root.querySelector('#btn-linea').addEventListener('click', agregarLinea);
+  activarAnulaciones(root.querySelector('#lista-compras'), async () => { invalidar('existencias'); await cargarLista(); });
   root.querySelector('#lista-compras').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
     if (tr) verDetalle(tr.dataset.id, tr.dataset.titulo);

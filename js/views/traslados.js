@@ -1,5 +1,6 @@
 import { api, catalogo } from '../api.js';
 import { html, esc, num, cop, fecha, toast, opciones, tabla, badge, alEnviar } from '../ui.js';
+import { columnaAnular, claseAnulado, activarAnulaciones } from '../anular.js';
 
 export async function vistaTraslados(root) {
   const bodegas = await catalogo('bodegas');
@@ -69,11 +70,14 @@ export async function vistaTraslados(root) {
         { titulo: 'Hacia', render: (t) => `${esc(t.empresa_destino)} <span class="muted">/ ${esc(t.bodega_destino)}</span>` },
         { titulo: 'Valor', num: true, render: (t) => cop(Number(t.cantidad) * Number(t.costo_unitario)) },
         { titulo: '', render: (t) => (t.es_venta_intercompania ? badge('Intercompañía', 'brand') : '') },
+        columnaAnular('traslado', (t) => `el traslado de ${num(t.cantidad)} ${t.unidad_medida} de ${t.producto}`),
       ],
       filas,
+      filaAttrs: (t) => `class="${claseAnulado(t)}"`,
     });
   }
 
+  activarAnulaciones(root.querySelector('#lista-traslados'), () => Promise.all([cargarOrigen(), cargarLista()]));
   selOrigen.addEventListener('change', cargarOrigen);
   selProducto.addEventListener('change', mostrarDisponible);
 

@@ -1,5 +1,6 @@
 import { api, catalogo } from '../api.js';
 import { html, esc, num, cop, fecha, toast, opciones, tabla, alEnviar } from '../ui.js';
+import { columnaAnular, claseAnulado, activarAnulaciones } from '../anular.js';
 
 export async function vistaFormulacion(root) {
   const [empresas, bodegas, productos] = await Promise.all([catalogo('empresas'), catalogo('bodegas'), catalogo('productos')]);
@@ -164,11 +165,14 @@ export async function vistaFormulacion(root) {
         { titulo: 'Cantidad', num: true, render: (o) => `${num(o.cantidad_producida)} ${esc(o.unidad_medida)}` },
         { titulo: 'Costo unit.', num: true, render: (o) => (o.costo_unitario ? cop(o.costo_unitario) : '—') },
         { titulo: 'Bodega', campo: 'bodega' },
+        columnaAnular('produccion', (o) => `la producción de ${num(o.cantidad_producida)} ${o.unidad_medida} de ${o.producto}`),
       ],
       filas,
+      filaAttrs: (o) => `class="${claseAnulado(o)}"`,
     });
   }
 
+  activarAnulaciones(root.querySelector('#lista-produccion'), cargarListaProduccion);
   selP.addEventListener('change', cargarBodegasProduccion);
   inpP.addEventListener('input', actualizarPreview);
 

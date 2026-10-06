@@ -1,6 +1,7 @@
 // Cartera: cuentas por cobrar (clientes) y por pagar (proveedores).
 import { selectorPago } from '../pago-widget.js';
 import { imprimirEgreso } from '../comprobante-egreso.js';
+import { columnaAnular, claseAnulado, activarAnulaciones } from '../anular.js';
 import { api, catalogo } from '../api.js';
 import { html, esc, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 
@@ -37,8 +38,8 @@ export async function vistaCartera(root, params) {
           </div>
           <div id="lista-terceros"></div>
         </div>
-        <div class="card" id="card-egresos" hidden>
-          <h2>Comprobantes de egreso</h2>
+        <div class="card" id="card-egresos">
+          <h2 id="titulo-comprobantes">Comprobantes de egreso</h2>
           <div id="lista-egresos"></div>
         </div>
       </div>
@@ -165,10 +166,9 @@ export async function vistaCartera(root, params) {
     tabsEl.querySelectorAll('button[data-tab]').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     root.querySelector('#btn-aplicar').textContent = tab === 'cobrar' ? 'Registrar recibo' : 'Registrar pago';
     root.querySelector('#ap-retenciones').hidden = tab !== 'cobrar';
-    root.querySelector('#card-egresos').hidden = tab === 'cobrar';
     montarPago();
     cargarLista();
-    if (tab !== 'cobrar') cargarEgresos();
+    cargarEgresos();
   }
 
   let pago = null;
@@ -178,21 +178,49 @@ export async function vistaCartera(root, params) {
     });
   }
 
+  // Recibos de caja (pestaña cobrar) o comprobantes de egreso (pestaña pagar), cada uno con su botón Anular.
   async function cargarEgresos() {
-    const egresos = await api(`/cartera/pagos${empresaId ? `?empresa_id=${empresaId}` : ''}`);
-    root.querySelector('#lista-egresos').innerHTML = tabla({
+    const q = empresaId ? `?empresa_id=${empresaId}` : '';
+    const lista = root.querySelector('#lista-egresos');
+    const medio = (p) => `${esc(p.medio_pago)}${p.cuenta_pago ? `<br><span class="muted">${esc(p.cuenta_pago)}</span>` : ''}${p.referencia ? `<br><span class="muted">Ref. ${esc(p.referencia)}</span>` : ''}`;
+    if (tab === 'cobrar') {
+      root.querySelector('#titulo-comprobantes').textContent = 'Recibos de caja';
+      const recibos = await api(`/cartera/recibos${q}`);
+      lista.innerHTML = tabla({
+        columnas: [
+          { titulo: 'N.°', render: (r) => `<span class="mono">RC-${esc(r.consecutivo)}</span>` },
+          { titulo: 'Fecha', render: (r) => dia(r.fecha) },
+          { titulo: 'Cliente', render: (r) => `${esc(r.cliente)}${r.facturas ? `<br><span class="muted">${esc(r.facturas)}</span>` : ''}${empresaId ? '' : `<br><span class="muted">${esc(r.empresa)}</span>`}` },
+          { titulo: 'Medio · cuenta', render: medio },
+          { titulo: 'Valor', num: true, render: (r) => cop(r.total) },
+          columnaAnular('recibo', (r) => `el recibo de caja RC-${r.consecutivo}`),
+        ],
+        filas: recibos,
+        vacio: 'Todavía no hay recibos de caja.',
+        filaAttrs: (r) => `class="${claseAnulado(r)}"`,
+      });
+      return;
+    }
+    root.querySelector('#titulo-comprobantes').textContent = 'Comprobantes de egreso';
+    const egresos = await api(`/cartera/pagos${q}`);
+    lista.innerHTML = tabla({
       columnas: [
         { titulo: 'N.°', render: (p) => `<span class="mono">CE-${esc(p.consecutivo)}</span>` },
         { titulo: 'Fecha', render: (p) => dia(p.fecha) },
         { titulo: 'Proveedor', render: (p) => `${esc(p.proveedor)}${empresaId ? '' : `<br><span class="muted">${esc(p.empresa)}</span>`}` },
-        { titulo: 'Medio · cuenta', render: (p) => `${esc(p.medio_pago)}${p.cuenta_pago ? `<br><span class="muted">${esc(p.cuenta_pago)}</span>` : ''}${p.referencia ? `<br><span class="muted">Ref. ${esc(p.referencia)}</span>` : ''}` },
+        { titulo: 'Medio · cuenta', render: medio },
         { titulo: 'Valor', num: true, render: (p) => cop(p.total) },
         { titulo: '', render: (p) => `<button type="button" class="btn-link" data-egreso="${p.id}">Imprimir</button>` },
+        columnaAnular('egreso', (p) => `el comprobante de egreso CE-${p.consecutivo}`),
       ],
       filas: egresos,
       vacio: 'Todavía no hay egresos.',
+      filaAttrs: (p) => `class="${claseAnulado(p)}"`,
     });
   }
+  activarAnulaciones(root.querySelector('#lista-egresos'), async () => {
+    await Promise.all([cargarEgresos(), cargarResumen(), cargarLista()]);
+  });
   root.querySelector('#lista-egresos').addEventListener('click', (e) => {
     const b = e.target.closest('[data-egreso]');
     if (b) imprimirEgreso(b.dataset.egreso);
@@ -204,7 +232,7 @@ export async function vistaCartera(root, params) {
     empresaId = selEmpresa.value;
     localStorage.setItem('cartera_empresa', empresaId);
     pago?.recargar();
-    if (tab !== 'cobrar') cargarEgresos();
+    cargarEgresos();
     cargarResumen();
     cargarLista();
   });
@@ -262,8 +290,8 @@ export async function vistaCartera(root, params) {
       });
       toast(`Comprobante de egreso N.° ${r.consecutivo} por ${cop(r.total)}${r.cuenta ? ` desde ${r.cuenta}` : ''}`, 'ok');
       imprimirEgreso(r.id);
-      cargarEgresos();
     }
+    cargarEgresos();
     await Promise.all([cargarResumen(), cargarLista()]);
   });
 

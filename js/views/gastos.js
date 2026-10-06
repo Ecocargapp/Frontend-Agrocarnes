@@ -8,6 +8,7 @@ import { html, esc, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alE
 import { widgetRetencion } from '../retencion-widget.js';
 import { selectorPago } from '../pago-widget.js';
 import { imprimirEgreso } from '../comprobante-egreso.js';
+import { columnaAnular, claseAnulado, activarAnulaciones } from '../anular.js';
 
 
 export async function vistaGastos(root) {
@@ -182,10 +183,11 @@ export async function vistaGastos(root) {
         { titulo: 'Ret.', num: true, render: (g) => { const r = Number(g.retefuente) + Number(g.reteiva) + Number(g.reteica); return r ? cop(r) : '—'; } },
         { titulo: 'Neto', num: true, render: (g) => cop(g.total) },
         { titulo: 'Saldo', num: true, render: (g) => (Number(g.saldo) > 0 ? cop(g.saldo) : '—') },
+        columnaAnular('gasto', (g) => `el gasto de ${g.proveedor} del ${dia(g.fecha)}`),
       ],
       filas: gastos,
       vacio: 'Todavía no hay gastos registrados.',
-      filaAttrs: (g) => `class="clickable" data-id="${g.id}" data-titulo="${esc(`${g.proveedor} · ${dia(g.fecha)}`)}"`,
+      filaAttrs: (g) => `class="clickable${claseAnulado(g)}" data-id="${g.id}" data-titulo="${esc(`${g.proveedor} · ${dia(g.fecha)}`)}"`,
     });
   }
 
@@ -221,6 +223,7 @@ export async function vistaGastos(root) {
       filas: rs,
     });
   }
+  activarAnulaciones(root.querySelector('#lista-gastos'), () => Promise.all([cargarLista(), cargarActivos()]));
   root.querySelector('#lista-gastos').addEventListener('click', (e) => {
     const tr = e.target.closest('tr[data-id]');
     if (tr) verDetalle(tr.dataset.id, tr.dataset.titulo);
