@@ -1,6 +1,6 @@
 // Informes: venta diaria, estado de resultados (utilidad bruta, EBITDA,
 // utilidad antes de impuestos), balance general, IVA/INC a pagar, retenciones
-// a pagar y libro diario. Todo sale de los asientos contables automáticos.
+// a pagar, balance de prueba (PUC a 8 dígitos) y libro auxiliar por cuenta y NIT. Todo sale de los asientos contables automáticos.
 import { api, catalogo, session } from '../api.js';
 import { html, esc, cop, dia, toast, opciones, tabla, badge, alEnviar, datosForm, descargarExcel } from '../ui.js';
 
@@ -10,12 +10,17 @@ const INFORMES = [
   ['balance', 'Balance general'],
   ['iva', 'IVA e INC a pagar'],
   ['retenciones', 'Retenciones a pagar'],
-  ['diario', 'Libro diario'],
+  ['prueba', 'Balance de prueba'],
+  ['diario', 'Libro auxiliar'],
 ];
 
 const hoyBogota = () => new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
 const inicioMes = () => `${hoyBogota().slice(0, 8)}01`;
 const v = (n) => `<td class="v${Number(n) < 0 ? ' neg' : ''}">${cop(n)}</td>`;
+const n2 = (n) => Number(n || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const n0 = (n) => Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+const fCorta = (f) => { const [y, m, d] = String(f).slice(0, 10).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+const fLarga = (f) => new Date(`${String(f).slice(0, 10)}T12:00:00`).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
 const pct = (n) => `<td class="pct">${n === null || n === undefined ? '' : `${Number(n).toLocaleString('es-CO', { maximumFractionDigits: 1 })}%`}</td>`;
 
 export async function vistaInformes(root, params) {
@@ -38,6 +43,12 @@ export async function vistaInformes(root, params) {
         <label class="w-fecha" id="lbl-desde"><span>Desde</span><input type="date" id="i-desde" value="${inicioMes()}" /></label>
         <label class="w-fecha"><span id="lbl-hasta">Hasta</span><input type="date" id="i-hasta" value="${hoyBogota()}" /></label>
         <button type="button" class="btn-secondary w-sm" id="btn-excel">Excel</button>
+        <button type="button" class="btn-secondary w-sm" id="btn-imprimir">Imprimir</button>
+      </div>
+      <div class="row" id="filtros-libro" hidden>
+        <label><span>Cuenta (empieza por)</span><input id="i-cuenta" inputmode="numeric" placeholder="Todas · ej. 1105, 2205, 13050501" /></label>
+        <label id="lbl-nit"><span>NIT / documento del tercero</span><input id="i-nit" placeholder="Todos" /></label>
+        <label id="lbl-nivel"><span>Nivel de detalle</span><select id="i-nivel"><option value="8">Auxiliar (8 dígitos)</option><option value="6">Subcuenta (6)</option><option value="4">Cuenta (4)</option><option value="2">Grupo (2)</option><option value="1">Clase (1)</option></select></label>
       </div>
       <div id="informe"><p class="muted">Cargando…</p></div>
     </div>
@@ -76,6 +87,12 @@ export async function vistaInformes(root, params) {
   try { const e = localStorage.getItem('informe_empresa'); if (e !== null && [...selEmpresa.options].some((o) => o.value === e)) selEmpresa.value = e; } catch { /* sin storage */ }
 
   const q = () => `empresa_id=${selEmpresa.value}&desde=${inDesde.value}&hasta=${inHasta.value}`;
+  const qLibro = () => `${q()}&cuenta=${encodeURIComponent(root.querySelector('#i-cuenta').value.trim())}&nit=${encodeURIComponent(root.querySelector('#i-nit').value.trim())}&nivel=${root.querySelector('#i-nivel').value}`;
+  const encabezado = (titulo, extra = '') => `
+    <div class="reporte-cab">
+      <div><span>${esc(fLarga(new Date(Date.now() - 5 * 3600e3).toISOString()))}</span><b>${esc(selEmpresa.value ? nombreEmpresa().toUpperCase() : 'UNION AVICOLA AGROPOLLO S.A.S. ZOMAC · CONSOLIDADO')}</b><span></span></div>
+      <h2>${esc(titulo)} : ${esc(fLarga(inDesde.value))} - ${esc(fLarga(inHasta.value))}</h2>${extra}
+    </div>`;
   const nombreEmpresa = () => (selEmpresa.value ? selEmpresa.options[selEmpresa.selectedIndex].textContent : 'Consolidado');
 
   // ----------------------------------------------------------- renderizadores
@@ -230,24 +247,54 @@ export async function vistaInformes(root, params) {
         <p class="muted">Las retenciones que nos practicaron no se pueden restar en el formulario 350: quedan como anticipo y se descuentan en renta, IVA o ICA. El "resultado neto" sirve para ver el efecto en caja.</p>`;
     },
 
-    async diario() {
-      datos = await api(`/informes/libro-diario?${q()}`);
-      const td = datos.reduce((a, l) => a + l.debito, 0); const tc = datos.reduce((a, l) => a + l.credito, 0);
+    async prueba() {
+      const d = datos = await api(`/informes/balance-prueba?${qLibro()}`);
+      const clases = { 1: 'ACTIVO', 2: 'PASIVO', 3: 'PATRIMONIO', 4: 'INGRESOS', 5: 'GASTOS', 6: 'COSTOS DE VENTAS' };
+      let filas = '';
+      d.cuentas.forEach((c, i) => {
+        filas += `<tr class="niv${c.nivel}"><td class="mono">${esc(c.codigo)}</td><td>${esc(c.nombre)}</td><td class="v">${n2(c.saldo_inicial)}</td><td class="v">${n2(c.debitos)}</td><td class="v">${n2(c.creditos)}</td><td class="v">${n2(c.saldo_final)}</td></tr>`;
+        const sig = d.cuentas[i + 1];
+        if (c.codigo[0] !== sig?.codigo[0] && clases[c.codigo[0]]) filas += `<tr class="fin-div"><td colspan="6">Fin División: ${clases[c.codigo[0]]}</td></tr>`;
+      });
+      const t = d.totales;
+      const cuadra = Math.abs(t.saldo_final) < 0.01 && Math.abs(t.debitos - t.creditos) < 0.01;
       return html`
-        <p class="muted">${datos.length} líneas · débitos ${cop(td)} · créditos ${cop(tc)} ${Math.abs(td - tc) < 0.01 ? badge('cuadrado', 'ok') : badge('descuadrado', 'danger')}. Descárgalo en Excel para el contador.</p>
-        ${tabla({
-          columnas: [
-            { titulo: 'Fecha', render: (l) => dia(l.fecha) },
-            { titulo: 'Documento', render: (l) => `${esc(l.descripcion || '')}${!selEmpresa.value ? `<br><span class="muted">${esc(l.empresa)}</span>` : ''}` },
-            { titulo: 'Cuenta', render: (l) => `<span class="mono">${esc(l.cuenta)}</span> ${esc(l.cuenta_nombre)}` },
-            { titulo: 'Tercero', render: (l) => esc(l.tercero || '') },
-            { titulo: 'Débito', num: true, render: (l) => (l.debito ? cop(l.debito) : '') },
-            { titulo: 'Crédito', num: true, render: (l) => (l.credito ? cop(l.credito) : '') },
-          ],
-          filas: datos.slice(0, 500),
-          vacio: 'Sin movimientos en el rango.',
-        })}
-        ${datos.length > 500 ? '<p class="muted">Se muestran las primeras 500 líneas; el Excel trae todas.</p>' : ''}`;
+        <div class="reporte">
+          ${encabezado('BALANCE DE PRUEBA')}
+          <table class="libro">
+            <thead><tr><th>Cuenta</th><th>Nombre Cuenta</th><th>Saldo Inicial</th><th>Débitos</th><th>Créditos</th><th>Saldo Final</th></tr></thead>
+            <tbody>${filas || '<tr><td colspan="6" class="muted">Sin movimientos en el rango.</td></tr>'}</tbody>
+            <tfoot><tr><td colspan="2">TOTALES</td><td class="v">${n2(t.saldo_inicial)}</td><td class="v">${n2(t.debitos)}</td><td class="v">${n2(t.creditos)}</td><td class="v">${n2(t.saldo_final)}</td></tr></tfoot>
+          </table>
+          <p>${cuadra ? '<span class="cuadre-ok">✓ Débitos = créditos y la suma de saldos es cero.</span>' : '<span class="neg">El balance no cuadra: usa "Reconstruir contabilidad".</span>'}
+          <span class="muted"> Saldos = débitos − créditos (las cuentas de naturaleza crédito salen negativas).</span></p>
+        </div>`;
+    },
+
+    async diario() {
+      const d = datos = await api(`/informes/auxiliar?${qLibro()}`);
+      let filas = '';
+      for (const c of d.cuentas) {
+        filas += `<tr class="aux-cuenta"><td colspan="8">${esc(c.codigo)} - ${esc(c.nombre)}</td></tr>`;
+        for (const t of c.terceros) {
+          filas += `<tr class="aux-nit"><td colspan="2">${esc(t.nit)}</td><td colspan="5">${esc(t.nombre)}</td><td class="v">${n2(t.saldo_inicial)}</td></tr>`;
+          for (const m of t.movimientos) {
+            filas += `<tr><td>${fCorta(m.fecha)}</td><td class="mono">${esc(m.documento || '')}</td><td>${esc(m.detalle || '')}</td><td>${esc(m.concepto || '')}</td><td>${esc(m.centro_costo || '')}</td><td class="v">${n0(m.debe)}</td><td class="v">${n0(m.haber)}</td><td class="v">${n0(m.saldo)}</td></tr>`;
+          }
+          filas += `<tr class="aux-tot"><td></td><td colspan="4">Total Movimientos Nit</td><td class="v">${n0(t.total_debe)}</td><td class="v">${n0(t.total_haber)}</td><td class="v">${n2(t.saldo_final)}</td></tr>`;
+        }
+        filas += `<tr class="aux-totcta"><td colspan="5">Total ${esc(c.codigo)} - ${esc(c.nombre)}</td><td class="v">${n0(c.total_debe)}</td><td class="v">${n0(c.total_haber)}</td><td class="v">${n2(c.saldo_final)}</td></tr>`;
+      }
+      const cuenta = root.querySelector('#i-cuenta').value.trim();
+      const nit = root.querySelector('#i-nit').value.trim();
+      return html`
+        <div class="reporte">
+          ${encabezado('LISTADO DE MOVIMIENTOS CLASIFICADO POR CUENTA Y NIT', `<p class="reporte-rango">PERIODO: ${esc(fLarga(inDesde.value))} - ${esc(fLarga(inHasta.value))} &nbsp; · &nbsp; RANGO CUENTAS: ${cuenta ? esc(cuenta) : '10000000 - 99999999'} &nbsp; · &nbsp; RANGO NITS: ${nit ? esc(nit) : 'TODOS'}</p>`)}
+          <table class="libro aux">
+            <thead><tr><th>Fecha</th><th>Documento</th><th>Detalle</th><th>Concepto</th><th>Centro Costo</th><th>Debe</th><th>Haber</th><th>Saldo</th></tr></thead>
+            <tbody>${filas || '<tr><td colspan="8" class="muted">Sin movimientos en el rango.</td></tr>'}</tbody>
+          </table>
+        </div>`;
     },
   };
 
@@ -271,13 +318,26 @@ export async function vistaInformes(root, params) {
       ['IVA a pagar (saldo a favor si es negativo)', datos.iva.saldo_a_pagar], ['INC a pagar', datos.inc.generado],
       ...datos.bases_por_tarifa.map((b) => [`Base ${b.impuesto} ${b.tarifa}%`, b.base])]) }),
     retenciones: () => ({ columnas: ['nombre', 'documentos', 'base', 'retefuente', 'reteiva', 'reteica'].map((c) => ({ titulo: c, campo: c })), filas: datos.practicadas }),
-    diario: () => ({ columnas: ['fecha', 'empresa', 'descripcion', 'cuenta', 'cuenta_nombre', 'tercero_documento', 'tercero', 'detalle', 'debito', 'credito'].map((c) => ({ titulo: c, campo: c })), filas: datos }),
+    prueba: () => ({ columnas: [{ titulo: 'Cuenta', campo: 'codigo', ancho: 12 }, { titulo: 'Nombre Cuenta', campo: 'nombre', ancho: 40 },
+      { titulo: 'Saldo Inicial', campo: 'saldo_inicial' }, { titulo: 'Débitos', campo: 'debitos' }, { titulo: 'Créditos', campo: 'creditos' }, { titulo: 'Saldo Final', campo: 'saldo_final' }], filas: datos.cuentas }),
+    diario: () => ({ columnas: [{ titulo: 'Cuenta', campo: 'cuenta', ancho: 12 }, { titulo: 'Nombre cuenta', campo: 'cuenta_nombre', ancho: 30 }, { titulo: 'NIT', campo: 'nit', ancho: 14 },
+      { titulo: 'Tercero', campo: 'tercero', ancho: 30 }, { titulo: 'Fecha', campo: 'fecha', ancho: 11 }, { titulo: 'Documento', campo: 'documento', ancho: 14 },
+      { titulo: 'Detalle', campo: 'detalle', ancho: 36 }, { titulo: 'Concepto', campo: 'concepto', ancho: 24 }, { titulo: 'Centro Costo', campo: 'centro_costo', ancho: 14 },
+      { titulo: 'Debe', campo: 'debe' }, { titulo: 'Haber', campo: 'haber' }, { titulo: 'Saldo', campo: 'saldo' }],
+      filas: datos.cuentas.flatMap((c) => c.terceros.flatMap((t) => [
+        { cuenta: c.codigo, cuenta_nombre: c.nombre, nit: t.nit, tercero: t.nombre, detalle: 'Saldo inicial', saldo: t.saldo_inicial },
+        ...t.movimientos.map((m) => ({ cuenta: c.codigo, cuenta_nombre: c.nombre, nit: t.nit, tercero: t.nombre, ...m })),
+        { cuenta: c.codigo, cuenta_nombre: c.nombre, nit: t.nit, tercero: t.nombre, detalle: 'Total Movimientos Nit', debe: t.total_debe, haber: t.total_haber, saldo: t.saldo_final },
+      ])) }),
   };
 
   async function mostrar() {
     root.querySelectorAll('[data-informe]').forEach((b) => b.classList.toggle('active', b.dataset.informe === actual));
     root.querySelector('#lbl-desde').hidden = actual === 'balance';
     root.querySelector('#lbl-hasta').textContent = actual === 'balance' ? 'Corte' : 'Hasta';
+    root.querySelector('#filtros-libro').hidden = !['prueba', 'diario'].includes(actual);
+    root.querySelector('#lbl-nit').hidden = actual !== 'diario';
+    root.querySelector('#lbl-nivel').hidden = actual !== 'prueba';
     try { localStorage.setItem('informe_actual', actual); localStorage.setItem('informe_empresa', selEmpresa.value); } catch { /* sin storage */ }
     cont.innerHTML = '<p class="muted">Calculando…</p>';
     try {
@@ -288,7 +348,9 @@ export async function vistaInformes(root, params) {
   }
 
   root.querySelectorAll('[data-informe]').forEach((b) => b.addEventListener('click', () => { actual = b.dataset.informe; mostrar(); }));
-  [selEmpresa, inDesde, inHasta].forEach((el) => el.addEventListener('change', mostrar));
+  [selEmpresa, inDesde, inHasta, root.querySelector('#i-nivel')].forEach((el) => el.addEventListener('change', mostrar));
+  ['#i-cuenta', '#i-nit'].forEach((s) => root.querySelector(s).addEventListener('change', mostrar));
+  root.querySelector('#btn-imprimir').addEventListener('click', () => window.print());
   root.querySelector('#btn-excel').addEventListener('click', () => {
     if (!datos) return;
     const titulo = INFORMES.find(([k]) => k === actual)[1];
@@ -319,7 +381,7 @@ export async function vistaInformes(root, params) {
       e.target.disabled = true;
       try {
         const r = await api('/informes/reconstruir', { method: 'POST' });
-        root.querySelector('#res-reconstruir').textContent = `Listo: ${r.factura_venta} facturas, ${r.compra} compras y gastos, ${r.recibo_caja} recibos, ${r.pago_proveedor} pagos, ${r.nota_credito} notas crédito, ${r.traslado} traslados, ${r.depreciaciones} depreciaciones. Débitos ${cop(r.debitos)} = créditos ${cop(r.creditos)}.`;
+        root.querySelector('#res-reconstruir').textContent = `Listo: ${r.factura_venta} facturas, ${r.compra} compras y gastos, ${r.recibo_caja} recibos, ${r.pago_proveedor} pagos, ${r.nota_credito} notas crédito, ${r.traslado} traslados, ${r.nomina || 0} nóminas, ${r.depreciaciones} depreciaciones. Débitos ${cop(r.debitos)} = créditos ${cop(r.creditos)}.`;
         await mostrar();
       } catch (err) { toast(err.message, 'error'); } finally { e.target.disabled = false; }
     });

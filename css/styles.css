@@ -172,3 +172,33 @@ details.novedad > summary { cursor: pointer; font-weight: 500; padding: 2px 0; }
 details.novedad[open] > summary { margin-bottom: 8px; }
 label.chk { flex-direction: row; align-items: center; gap: 6px; display: flex; }
 label.chk input { width: auto; }
+
+/* Libros contables (balance de prueba, auxiliar por cuenta y NIT) */
+.reporte-cab { margin: 8px 0 12px; }
+.reporte-cab > div { display: flex; justify-content: space-between; align-items: baseline; font-size: .8rem; }
+.reporte-cab > div b { font-size: 1.05rem; letter-spacing: .04em; }
+.reporte-cab h2 { text-align: center; font-size: .95rem; text-decoration: underline; margin: 6px 0 4px; }
+.reporte-rango { font-size: .75rem; font-weight: 600; margin: 4px 0 8px; }
+table.libro { width: 100%; border-collapse: collapse; font-size: .78rem; }
+table.libro th { background: #eef3fb; border: 1px solid #555; padding: 4px 6px; font-weight: 600; }
+table.libro td { border: 1px solid #999; padding: 3px 6px; }
+table.libro td.v { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.libro tr.niv1 td, table.libro tr.niv2 td, table.libro tr.niv4 td, table.libro tr.niv6 td { font-weight: 700; }
+table.libro tr.niv2 td:nth-child(2) { padding-left: 10px; }
+table.libro tr.niv4 td:nth-child(2) { padding-left: 16px; }
+table.libro tr.niv6 td:nth-child(2) { padding-left: 22px; }
+table.libro tr.niv8 td:nth-child(2) { padding-left: 30px; }
+table.libro tr.fin-div td { background: #e8e8e8; font-weight: 700; }
+table.libro tfoot td { font-weight: 700; border-top: 2px solid #333; }
+table.libro.aux tr.aux-cuenta td { background: #dde3ea; font-weight: 700; font-size: .85rem; }
+table.libro.aux tr.aux-nit td { background: #f0f0f0; font-weight: 700; }
+table.libro.aux tr.aux-tot td { font-weight: 700; text-align: center; }
+table.libro.aux tr.aux-tot td.v { text-align: right; }
+table.libro.aux tr.aux-totcta td { font-weight: 700; background: #f7f3e8; }
+@media print {
+  header, nav, #nav, .tabs, #filtros, #filtros-libro, .page-head, .grid:has(#form-aporte), .toast { display: none !important; }
+  body, .card { background: #fff !important; border: none !important; box-shadow: none !important; }
+  table.libro { font-size: 9px; }
+  table.libro thead { display: table-header-group; }
+  table.libro tr { page-break-inside: avoid; }
+}
