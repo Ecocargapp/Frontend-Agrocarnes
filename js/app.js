@@ -1,4 +1,4 @@
-import { api, session } from './api.js';
+import { api, session, invalidar } from './api.js';
 import { toast, datosForm } from './ui.js';
 import { vistaInventario } from './views/inventario.js';
 import { vistaCompras } from './views/compras.js';
@@ -11,6 +11,7 @@ import { vistaConfiguracion } from './views/configuracion.js';
 import { vistaGastos } from './views/gastos.js';
 import { vistaInformes } from './views/informes.js';
 import { vistaNomina } from './views/nomina.js';
+import { vistaUsuarios } from './views/usuarios.js';
 
 const vistas = {
   inventario: vistaInventario,
@@ -24,7 +25,12 @@ const vistas = {
   nomina: vistaNomina,
   informes: vistaInformes,
   configuracion: vistaConfiguracion,
+  usuarios: vistaUsuarios,
 };
+
+// Vistas que solo ve el administrador (el operador es el punto de venta).
+const SOLO_ADMIN = ['nomina', 'notas-credito', 'configuracion', 'usuarios'];
+const esAdmin = () => session.usuario?.rol === 'admin';
 
 const loginView = document.getElementById('login-view');
 const contentView = document.getElementById('content-view');
@@ -46,13 +52,13 @@ function mostrarApp() {
   nav.hidden = false;
   userBox.hidden = false;
   document.getElementById('user-name').textContent = session.usuario?.nombre || session.usuario?.email || '';
-  nav.querySelector('[data-view=configuracion]').hidden = session.usuario?.rol !== 'admin';
+  SOLO_ADMIN.forEach((v) => { const a = nav.querySelector(`[data-view=${v}]`); if (a) a.hidden = !esAdmin(); });
   navegar();
 }
 
 async function navegar() {
   const [nombre, query] = (location.hash || '#inventario').slice(1).split('?');
-  const vista = vistas[nombre] || vistas.inventario;
+  const vista = (!esAdmin() && SOLO_ADMIN.includes(nombre) ? null : vistas[nombre]) || vistas.inventario;
   const params = new URLSearchParams(query || '');
   nav.querySelectorAll('a').forEach((a) => a.classList.toggle('active', a.dataset.view === nombre));
   contentView.innerHTML = '<p class="muted">Cargando…</p>';
@@ -69,6 +75,7 @@ loginForm.addEventListener('submit', async (e) => {
   try {
     const { token, usuario } = await api('/auth/login', { method: 'POST', body: datosForm(loginForm) });
     session.set(token, usuario);
+    invalidar(); // los catálogos dependen del usuario (empresa asignada)
     loginForm.reset();
     mostrarApp();
   } catch (err) {

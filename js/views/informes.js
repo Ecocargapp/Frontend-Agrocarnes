@@ -26,7 +26,10 @@ const pct = (n) => `<td class="pct">${n === null || n === undefined ? '' : `${Nu
 export async function vistaInformes(root, params) {
   const empresas = await catalogo('empresas');
   const esAdmin = session.usuario?.rol === 'admin';
+  // El usuario de punto de venta solo ve la venta diaria.
+  const informes = esAdmin ? INFORMES : INFORMES.filter(([k]) => k === 'venta-diaria');
   let actual = params?.get('informe') || localStorage.getItem('informe_actual') || 'resultados';
+  if (!informes.some(([k]) => k === actual)) actual = informes[0][0];
   let datos = null;
 
   root.innerHTML = html`
@@ -35,7 +38,7 @@ export async function vistaInformes(root, params) {
       <span class="hint">Salen de la contabilidad automática: cada venta, compra, gasto, recibo y pago genera su asiento con cuentas del PUC.</span>
     </div>
     <div class="card">
-      <div class="tabs">${INFORMES.map(([k, t]) => `<button type="button" data-informe="${k}">${t}</button>`).join('')}</div>
+      <div class="tabs">${informes.map(([k, t]) => `<button type="button" data-informe="${k}">${t}</button>`).join('')}</div>
       <div class="row" id="filtros">
         <label><span>Empresa / centro de costo</span>
           <select id="i-empresa">${opciones(empresas, { vacio: 'Consolidado (todas)' })}</select>
