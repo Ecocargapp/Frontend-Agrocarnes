@@ -12,6 +12,7 @@ import { vistaGastos } from './views/gastos.js';
 import { vistaInformes } from './views/informes.js';
 import { vistaNomina } from './views/nomina.js';
 import { vistaUsuarios } from './views/usuarios.js';
+import { vistaBancos } from './views/bancos.js';
 
 const vistas = {
   inventario: vistaInventario,
@@ -21,6 +22,7 @@ const vistas = {
   formulacion: vistaFormulacion,
   ventas: vistaVentas,
   cartera: vistaCartera,
+  bancos: vistaBancos,
   'notas-credito': vistaNotasCredito,
   nomina: vistaNomina,
   informes: vistaInformes,
@@ -29,7 +31,7 @@ const vistas = {
 };
 
 // Vistas que solo ve el administrador (el operador es el punto de venta).
-const SOLO_ADMIN = ['nomina', 'notas-credito', 'configuracion', 'usuarios'];
+const SOLO_ADMIN = ['bancos', 'nomina', 'notas-credito', 'configuracion', 'usuarios'];
 const esAdmin = () => session.usuario?.rol === 'admin';
 
 const loginView = document.getElementById('login-view');
