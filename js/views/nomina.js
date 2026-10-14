@@ -46,9 +46,10 @@ export async function vistaNomina(root, params) {
               </div>
               <div class="row">
                 <label id="n-quincena-label" hidden><span>Quincena</span>
-                  <select name="quincena" id="n-quincena"><option value="1st">Primera (1 al 15)</option><option value="2nd">Segunda (16 a fin de mes)</option></select></label>
+                  <select name="quincena" id="n-quincena"><option value="1st"${hoyD.getDate() <= 15 ? ' selected' : ''}>Primera (1 al 15)</option><option value="2nd"${hoyD.getDate() > 15 ? ' selected' : ''}>Segunda (16 a fin de mes)</option></select></label>
                 <label><span>Fecha de pago</span><input type="date" name="fecha_pago" id="n-fecha" value="${hoy()}" required /></label>
               </div>
+              <p class="muted" id="n-quincena-ayuda" hidden style="margin:0">Cada quincena se liquida, paga y contabiliza por separado. A la DIAN se reporta <b>un solo documento por mes</b> (así lo exige la norma): se envía solo al liquidar la segunda quincena, sumando las dos. Plazo: los 10 primeros días del mes siguiente.</p>
               <div id="n-pago" class="pago-box"></div>
 
               <details class="novedad" open><summary>Horas extra y recargos</summary>
@@ -79,7 +80,7 @@ export async function vistaNomina(root, params) {
                 <label><span>Retención en la fuente (vacío = cálculo automático)</span><input type="number" id="nv-retencion" min="0" placeholder="automática" /></label></details>
               <label><span>Observación</span><input name="observacion" placeholder="Opcional" /></label>
               <div class="resumen-doc" id="n-preview"><p class="muted">Elige un trabajador para ver la liquidación.</p></div>
-              <button type="submit" class="btn-primary">Liquidar y enviar a la DIAN</button>
+              <button type="submit" class="btn-primary" id="n-enviar">Liquidar y enviar a la DIAN</button>
             </form>
           </div>
         </div>
@@ -239,7 +240,7 @@ export async function vistaNomina(root, params) {
 
   const entrada = () => {
     const e = empleadoActual();
-    const periodo = e?.periodo_pago || '5';
+    const periodo = e?.periodo_pago || '4';
     return { empleado_id: selEmp.value, anio: Number(q('#n-anio').value), mes: Number(q('#n-mes').value), periodo, quincena: periodo === '4' ? q('#n-quincena').value : undefined, novedades: novedades() };
   };
 
@@ -267,12 +268,21 @@ export async function vistaNomina(root, params) {
 
   async function alCambiarEmpleado() {
     const e = empleadoActual();
-    q('#n-quincena-label').hidden = e?.periodo_pago !== '4';
+    const quincenal = e?.periodo_pago === '4';
+    q('#n-quincena-label').hidden = !quincenal;
+    q('#n-quincena-ayuda').hidden = !quincenal;
+    textoBoton();
     if (e) {
       pago = await selectorPago(q('#n-pago'), { empresa: () => empleadoActual()?.empresa_id, sentido: 'egreso', medioInicial: e.medio_pago === 'consignacion' ? 'consignacion' : e.medio_pago });
     }
     previsualizar();
   }
+  function textoBoton() {
+    const quincenal = empleadoActual()?.periodo_pago === '4';
+    q('#n-enviar').textContent = !quincenal ? 'Liquidar y enviar a la DIAN'
+      : q('#n-quincena').value === '1st' ? 'Liquidar primera quincena' : 'Liquidar segunda quincena y enviar el mes a la DIAN';
+  }
+  q('#n-quincena').addEventListener('change', textoBoton);
   selEmp.addEventListener('change', alCambiarEmpleado);
   q('#n-anio').addEventListener('change', async () => { parametros = await api(`/nomina/parametros?anio=${q('#n-anio').value}`); previsualizar(); });
   q('#form-nomina').addEventListener('input', (e) => { if (e.target !== selEmp) previsualizar(); });
@@ -285,6 +295,7 @@ export async function vistaNomina(root, params) {
     const r = await api('/nomina', { method: 'POST', body: { ...entrada(), fecha_pago: d.fecha_pago, observacion: d.observacion || undefined, medio_pago: p.medio_pago, cuenta_pago_id: p.cuenta_pago_id } });
     const dn = r.dian;
     if (dn?.estado === 'aceptada') toast(`Nómina ${dn.numero} aceptada por la DIAN`, 'ok');
+    else if (dn?.estado === 'pendiente') toast(`Quincena guardada. ${dn.mensaje || ''}`, 'ok');
     else if (dn?.estado === 'sin_configurar') toast('Nómina guardada. Falta configurar la cuenta de Factus para enviarla a la DIAN', '');
     else toast(`Nómina guardada, pero la DIAN no la aceptó: ${dn?.mensaje || dn?.estado}`, 'error');
     for (const t of Object.keys(PLANTILLAS)) q(`#nv-${t}`).innerHTML = '';
@@ -348,7 +359,7 @@ export async function vistaNomina(root, params) {
       <p>DIAN: ${n.numero ? `<span class="mono">${esc(n.numero)}</span> ` : ''}${badge(n.estado_dian, ESTADO[n.estado_dian] || '')}
         ${n.estado === 'anulado' ? ` · ${badge('Anulada', 'danger')} ${n.ajuste_numero ? `con nota de ajuste <span class="mono">${esc(n.ajuste_numero)}</span>` : ''}` : ''}</p>
       ${n.cune ? `<p class="muted">CUNE: <span class="mono" style="word-break:break-all">${esc(n.cune)}</span></p>` : ''}
-      ${n.dian_mensaje ? `<p class="${n.estado_dian === 'aceptada' ? 'muted' : 'error'}">${esc(n.dian_mensaje)}</p>` : ''}
+      ${n.dian_mensaje ? `<p class="${['aceptada', 'pendiente'].includes(n.estado_dian) ? 'muted' : 'error'}">${esc(n.dian_mensaje)}</p>` : ''}
       ${n.motivo_anulacion ? `<p class="muted">Motivo de anulación: ${esc(n.motivo_anulacion)}</p>` : ''}
       <table class="informe">
         <tr class="sub"><td>Devengados</td><td></td></tr>${lineas(L.devengados)}
@@ -378,7 +389,7 @@ export async function vistaNomina(root, params) {
       re.disabled = true;
       try {
         const r = await api(`/nomina/${re.dataset.reenviar}/dian`, { method: 'POST' });
-        toast(r.estado === 'aceptada' ? `Nómina ${r.numero} aceptada por la DIAN` : `DIAN: ${r.mensaje || r.estado}`, r.estado === 'aceptada' ? 'ok' : 'error');
+        toast(r.estado === 'aceptada' ? `Nómina ${r.numero} aceptada por la DIAN` : `DIAN: ${r.mensaje || r.estado}`, r.estado === 'aceptada' ? 'ok' : (r.estado === 'pendiente' ? '' : 'error'));
       } catch (err) { toast(err.message, 'error'); }
       await cargarNominas();
       verDetalle(re.dataset.reenviar);
@@ -410,7 +421,7 @@ export async function vistaNomina(root, params) {
       <div class="row"><label><span>Cargo</span><input name="cargo" value="${v('cargo')}" /></label>
         <label class="w-sm"><span>Código</span><input name="codigo" value="${v('codigo')}" placeholder="Interno" /></label></div>
       <div class="row"><label><span>Salario mensual</span><input type="number" name="salario" min="1" required value="${v('salario', parametros.smmlv)}" /></label>
-        <label><span>Se paga</span><select name="periodo_pago"><option value="5"${e.periodo_pago !== '4' ? ' selected' : ''}>Mensual</option><option value="4"${e.periodo_pago === '4' ? ' selected' : ''}>Quincenal</option></select></label></div>
+        <label><span>Se paga</span><select name="periodo_pago"><option value="4"${e.periodo_pago !== '5' ? ' selected' : ''}>Quincenal</option><option value="5"${e.periodo_pago === '5' ? ' selected' : ''}>Mensual</option></select></label></div>
       <div class="row"><label><span>Contrato</span><select name="tipo_contrato">${sel(TIPO_CONTRATO, e.tipo_contrato || '2')}</select></label>
         <label><span>Tipo de trabajador</span><select name="tipo_trabajador">${sel(TIPO_TRABAJADOR, e.tipo_trabajador || '01')}</select></label></div>
       <div class="row"><label><span>Fecha de ingreso</span><input type="date" name="fecha_ingreso" required value="${f('fecha_ingreso')}" /></label>
