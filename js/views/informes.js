@@ -6,6 +6,7 @@ import { html, esc, cop, dia, toast, opciones, tabla, badge, alEnviar, datosForm
 
 const INFORMES = [
   ['venta-diaria', 'Venta diaria'],
+  ['ventas-cliente', 'Ventas por cliente'],
   ['resultados', 'Estado de resultados'],
   ['balance', 'Balance general'],
   ['iva', 'IVA e INC a pagar'],
@@ -27,7 +28,7 @@ export async function vistaInformes(root, params) {
   const empresas = await catalogo('empresas');
   const esAdmin = session.usuario?.rol === 'admin';
   // El usuario de punto de venta solo ve la venta diaria.
-  const informes = esAdmin ? INFORMES : INFORMES.filter(([k]) => k === 'venta-diaria');
+  const informes = esAdmin ? INFORMES : INFORMES.filter(([k]) => ['venta-diaria', 'ventas-cliente'].includes(k));
   let actual = params?.get('informe') || localStorage.getItem('informe_actual') || 'resultados';
   if (!informes.some(([k]) => k === actual)) actual = informes[0][0];
   let datos = null;
@@ -45,6 +46,7 @@ export async function vistaInformes(root, params) {
         </label>
         <label class="w-fecha" id="lbl-desde"><span>Desde</span><input type="date" id="i-desde" value="${inicioMes()}" /></label>
         <label class="w-fecha"><span id="lbl-hasta">Hasta</span><input type="date" id="i-hasta" value="${hoyBogota()}" /></label>
+        <label id="lbl-cliente" hidden><span>Cliente (nombre o NIT)</span><input id="i-cliente" placeholder="Todos" /></label>
         <button type="button" class="btn-secondary w-sm" id="btn-excel">Excel</button>
         <button type="button" class="btn-secondary w-sm" id="btn-imprimir">Imprimir</button>
       </div>
@@ -128,6 +130,53 @@ export async function vistaInformes(root, params) {
           vacio: 'No hay ventas en el rango.',
         })}
         ${t.ventas_internas ? `<p class="muted">Además hubo ventas internas entre centros de costo por ${cop(t.ventas_internas)} (no incluidas arriba).</p>` : ''}`;
+    },
+
+    async 'ventas-cliente'() {
+      const p = new URLSearchParams(q());
+      if (root.querySelector('#i-cliente').value.trim()) p.set('cliente', root.querySelector('#i-cliente').value.trim());
+      datos = await api(`/informes/ventas-cliente?${p}`);
+      const t = datos.totales;
+      // Detalle día por día con subtotal por día.
+      let filasDia = ''; let diaActual = null; let sub = null;
+      const cierre = () => (sub ? `<tr class="tot"><td colspan="2">Total ${esc(dia(diaActual))}</td><td class="v">${sub.facturas}</td><td></td><td class="v">${cop(sub.contado)}</td><td class="v">${cop(sub.credito)}</td><td class="v"><b>${cop(sub.total)}</b></td><td class="v">${cop(sub.saldo)}</td></tr>` : '');
+      for (const f of datos.filas) {
+        if (f.dia !== diaActual) { filasDia += cierre(); diaActual = f.dia; sub = { facturas: 0, contado: 0, credito: 0, total: 0, saldo: 0 }; }
+        for (const k of Object.keys(sub)) sub[k] += f[k];
+        filasDia += `<tr><td>${esc(dia(f.dia))}</td><td>${esc(f.cliente)}${f.documento ? ` <span class="muted">${esc(f.documento)}</span>` : ''}</td>
+          <td class="v">${f.facturas}</td><td><span class="muted mono" style="font-size:.8rem">${esc(f.numeros || '')}</span></td>
+          <td class="v">${cop(f.contado)}</td><td class="v">${cop(f.credito)}</td><td class="v"><b>${cop(f.total)}</b></td><td class="v${f.saldo > 0 ? ' neg' : ''}">${cop(f.saldo)}</td></tr>`;
+      }
+      filasDia += cierre();
+      return html`
+        <div class="kpis">
+          <div><span>Ventas del periodo</span><b>${cop(t.total)}</b></div>
+          <div><span>Clientes</span><b>${datos.clientes.length}</b></div>
+          <div><span>Facturas</span><b>${t.facturas}</b></div>
+          <div><span>De contado</span><b>${cop(t.contado)}</b></div>
+          <div><span>A crédito</span><b>${cop(t.credito)}</b></div>
+          <div><span>Saldo por cobrar de estas facturas</span><b>${cop(t.saldo)}</b></div>
+        </div>
+        <h3>Resumen por cliente</h3>
+        ${tabla({
+          columnas: [
+            { titulo: 'Cliente', render: (c) => `${esc(c.cliente)}${c.documento ? ` <span class="muted">${esc(c.documento)}</span>` : ''}` },
+            { titulo: 'Días con compra', num: true, campo: 'dias' },
+            { titulo: 'Facturas', num: true, campo: 'facturas' },
+            { titulo: 'Contado', num: true, render: (c) => cop(c.contado) },
+            { titulo: 'Crédito', num: true, render: (c) => cop(c.credito) },
+            { titulo: 'Total', num: true, render: (c) => `<b>${cop(c.total)}</b>` },
+            { titulo: '% de ventas', num: true, render: (c) => (t.total ? `${(c.total / t.total * 100).toLocaleString('es-CO', { maximumFractionDigits: 1 })}%` : '') },
+            { titulo: 'Saldo', num: true, render: (c) => cop(c.saldo) },
+          ],
+          filas: datos.clientes,
+          vacio: 'No hay ventas en el rango.',
+        })}
+        <h3 style="margin-top:18px">Detalle por día</h3>
+        <div class="table-wrap"><table class="informe">
+          <thead><tr><th>Día</th><th>Cliente</th><th class="num">Facturas</th><th>Números</th><th class="num">Contado</th><th class="num">Crédito</th><th class="num">Total</th><th class="num">Saldo</th></tr></thead>
+          <tbody>${filasDia || '<tr><td colspan="8" class="muted">No hay ventas en el rango.</td></tr>'}</tbody>
+        </table></div>`;
     },
 
     async resultados() {
@@ -304,6 +353,14 @@ export async function vistaInformes(root, params) {
   // ------------------------------------------------------------- Excel por informe
   const filas = (pares) => pares.map(([concepto, valor]) => ({ concepto, valor }));
   const EXCEL = {
+    'ventas-cliente': () => ({
+      columnas: [
+        { titulo: 'Día', campo: 'dia', ancho: 11 }, { titulo: 'Cliente', campo: 'cliente', ancho: 34 }, { titulo: 'Documento', campo: 'documento', ancho: 14 },
+        { titulo: 'Facturas', campo: 'facturas', ancho: 9 }, { titulo: 'Números', campo: 'numeros', ancho: 30 }, { titulo: 'Contado', campo: 'contado' },
+        { titulo: 'Crédito', campo: 'credito' }, { titulo: 'Total', campo: 'total' }, { titulo: 'Saldo', campo: 'saldo' },
+      ],
+      filas: datos.filas.map((f) => ({ ...f, dia: String(f.dia).slice(0, 10) })),
+    }),
     'venta-diaria': () => ({ columnas: ['dia', 'facturas', 'base', 'iva', 'inc', 'total', 'efectivo', 'transferencia', 'tarjeta', 'otro', 'credito'].map((c) => ({ titulo: c, valor: (d) => (c === 'dia' ? d.dia : d[c]) })), filas: datos.dias }),
     resultados: () => ({ columnas: [{ titulo: 'Concepto', campo: 'concepto' }, { titulo: 'Valor', campo: 'valor' }], filas: filas([
       ['Ventas', datos.ventas_brutas], ['Devoluciones', -datos.devoluciones], ['Ventas netas', datos.ventas_netas], ['Costo de ventas', -datos.costo_ventas],
@@ -341,6 +398,7 @@ export async function vistaInformes(root, params) {
     root.querySelector('#filtros-libro').hidden = !['prueba', 'diario'].includes(actual);
     root.querySelector('#lbl-nit').hidden = actual !== 'diario';
     root.querySelector('#lbl-nivel').hidden = actual !== 'prueba';
+    root.querySelector('#lbl-cliente').hidden = actual !== 'ventas-cliente';
     try { localStorage.setItem('informe_actual', actual); localStorage.setItem('informe_empresa', selEmpresa.value); } catch { /* sin storage */ }
     cont.innerHTML = '<p class="muted">Calculando…</p>';
     try {
@@ -352,7 +410,7 @@ export async function vistaInformes(root, params) {
 
   root.querySelectorAll('[data-informe]').forEach((b) => b.addEventListener('click', () => { actual = b.dataset.informe; mostrar(); }));
   [selEmpresa, inDesde, inHasta, root.querySelector('#i-nivel')].forEach((el) => el.addEventListener('change', mostrar));
-  ['#i-cuenta', '#i-nit'].forEach((s) => root.querySelector(s).addEventListener('change', mostrar));
+  ['#i-cuenta', '#i-nit', '#i-cliente'].forEach((s) => root.querySelector(s).addEventListener('change', mostrar));
   root.querySelector('#btn-imprimir').addEventListener('click', () => window.print());
   root.querySelector('#btn-excel').addEventListener('click', () => {
     if (!datos) return;
