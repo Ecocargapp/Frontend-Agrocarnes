@@ -1,6 +1,6 @@
 import { api, apiArchivo, catalogo, invalidar } from '../api.js';
 import { selectorPago } from '../pago-widget.js';
-import { formularioTercero, activarFormularioTercero, leerTercero, COLUMNAS_PLANTILLA } from '../tercero-form.js';
+import { formularioTercero, activarFormularioTercero, leerTercero, bloqueExistente, activarExistente, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 import { botonAnular, activarAnulaciones } from '../anular.js';
 
@@ -68,6 +68,7 @@ export async function vistaVentas(root) {
         </div>
         <div class="card" id="card-cli" hidden>
           <h2>Nuevo cliente</h2>
+          ${bloqueExistente('cliente')}
           <form id="form-cli">
             ${formularioTercero({}, { rol: 'cliente' })}
             <div class="row">
@@ -261,15 +262,20 @@ export async function vistaVentas(root) {
   });
   root.querySelector('#btn-nuevo-cli').addEventListener('click', () => { cardCli.hidden = false; cardCli.querySelector('input').focus(); });
   root.querySelector('#btn-cancelar-cli').addEventListener('click', () => { cardCli.hidden = true; });
+  const usarTercero = (c) => {
+    invalidar('clientes', 'proveedores');
+    const i = clientes.findIndex((x) => x.id === c.id);
+    if (i >= 0) clientes[i] = c; else clientes.push(c);
+    selCliente.innerHTML = opciones(clientes, { vacio: 'Consumidor final', seleccionado: c.id });
+    cardCli.hidden = true;
+    toast(c.existente ? `"${c.nombre}" ya existía${c.promovido ? ' y ahora también es cliente' : ''}; quedó seleccionado` : `Cliente "${c.nombre}" creado`, 'ok');
+  };
+  activarExistente(cardCli, 'cliente', usarTercero);
   alEnviar(root.querySelector('#form-cli'), async (e) => {
     const c = await api('/terceros', { method: 'POST', body: { tipo: 'cliente', ...leerTercero(e.target) } });
-    invalidar('clientes');
-    clientes.push(c);
-    selCliente.innerHTML = opciones(clientes, { vacio: 'Consumidor final', seleccionado: c.id });
     e.target.reset();
     activarFormularioTercero(e.target);
-    cardCli.hidden = true;
-    toast(`Cliente "${c.nombre}" creado`, 'ok');
+    usarTercero(c);
   });
 
   alEnviar(form, async () => {

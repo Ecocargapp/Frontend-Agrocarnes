@@ -89,7 +89,44 @@ export function formularioTercero(t = {}, { rol = 'cliente' } = {}) {
         <label class="check"><input type="checkbox" name="activo" value="true" ${t.activo === false ? '' : 'checked'} /> Activo</label>
       </div>
     </details>
+    <label class="check"><input type="checkbox" name="tambien" value="true" ${t.tipo === 'ambos' ? 'checked' : ''} /> También es ${rol === 'proveedor' ? 'cliente' : 'proveedor'}</label>
   `;
+}
+
+// Bloque para usar un tercero que ya existe con el otro rol (un cliente que
+// también nos vende, o un proveedor que también nos compra): con el NIT basta.
+export function bloqueExistente(rol) {
+  const otro = rol === 'proveedor' ? 'cliente' : 'proveedor';
+  return html`
+    <div class="pago-box" data-existente style="margin-bottom:10px">
+      <p style="margin:0 0 6px"><b>¿Ya está creado como ${otro}?</b> Escribe su NIT o cédula y queda también como ${rol}, sin volver a llenar los datos.</p>
+      <div class="row" style="align-items:end">
+        <label><span>NIT / cédula (sin DV)</span><input data-existente-doc inputmode="numeric" /></label>
+        <button type="button" class="btn-secondary w-sm" data-existente-ok>Usar como ${rol}</button>
+      </div>
+    </div>`;
+}
+
+export function activarExistente(contenedor, rol, alListo) {
+  const caja = contenedor.querySelector('[data-existente]');
+  if (!caja) return;
+  const usar = async () => {
+    const doc = caja.querySelector('[data-existente-doc]').value.trim();
+    if (!doc) return;
+    const boton = caja.querySelector('[data-existente-ok]');
+    boton.disabled = true;
+    try {
+      const { api } = await import('./api.js');
+      const t = await api('/terceros/habilitar', { method: 'POST', body: { numero_documento: doc, rol } });
+      caja.querySelector('[data-existente-doc]').value = '';
+      await alListo(t);
+    } catch (err) {
+      const { toast } = await import('./ui.js');
+      toast(err.message, 'error');
+    } finally { boton.disabled = false; }
+  };
+  caja.querySelector('[data-existente-ok]').addEventListener('click', usar);
+  caja.querySelector('[data-existente-doc]').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); usar(); } });
 }
 
 // Conecta el cambio natural/jurídica (muestra los campos que aplican y
@@ -118,6 +155,7 @@ export function leerTercero(form) {
   const d = Object.fromEntries(new FormData(form).entries());
   d.autorretenedor_renta = Boolean(form.elements.autorretenedor_renta?.checked);
   d.activo = Boolean(form.elements.activo?.checked);
+  d.tambien = Boolean(form.elements.tambien?.checked);
   if (d.tipo_persona === 'natural') d.razon_social = '';
   else ['primer_nombre', 'segundo_nombre', 'primer_apellido', 'segundo_apellido'].forEach((c) => { d[c] = ''; });
   return d;

@@ -3,7 +3,7 @@
 // crédito, genera su asiento (51xx/52xx/53xx o 15xx) y, si tiene activos
 // fijos, se deprecian solos cada mes.
 import { api, catalogo, invalidar } from '../api.js';
-import { formularioTercero, activarFormularioTercero, leerTercero } from '../tercero-form.js';
+import { formularioTercero, activarFormularioTercero, leerTercero, bloqueExistente, activarExistente } from '../tercero-form.js';
 import { html, esc, cop, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
 import { widgetRetencion } from '../retencion-widget.js';
 import { selectorPago } from '../pago-widget.js';
@@ -62,6 +62,7 @@ export async function vistaGastos(root) {
         </div>
         <div class="card" id="card-prov" hidden>
           <h2>Nuevo proveedor</h2>
+          ${bloqueExistente('proveedor')}
           <form id="form-prov">
             ${formularioTercero({}, { rol: 'proveedor' })}
             <div class="row">
@@ -239,16 +240,21 @@ export async function vistaGastos(root) {
   activarFormularioTercero(root.querySelector('#form-prov'));
   root.querySelector('#btn-nuevo-prov').addEventListener('click', () => { cardProv.hidden = false; cardProv.querySelector('input').focus(); });
   root.querySelector('#btn-cancelar-prov').addEventListener('click', () => { cardProv.hidden = true; });
+  const usarTercero = (p) => {
+    invalidar('clientes', 'proveedores');
+    const i = proveedores.findIndex((x) => x.id === p.id);
+    if (i >= 0) proveedores[i] = p; else proveedores.push(p);
+    selProv.innerHTML = opciones(proveedores, { vacio: 'Selecciona…', seleccionado: p.id });
+    cardProv.hidden = true;
+    toast(p.existente ? `"${p.nombre}" ya existía${p.promovido ? ' y ahora también es proveedor' : ''}; quedó seleccionado` : `Proveedor "${p.nombre}" creado`, 'ok');
+    calcular();
+  };
+  activarExistente(cardProv, 'proveedor', usarTercero);
   alEnviar(root.querySelector('#form-prov'), async (e) => {
     const p = await api('/terceros', { method: 'POST', body: { tipo: 'proveedor', ...leerTercero(e.target) } });
-    invalidar('proveedores');
-    proveedores.push(p);
-    selProv.innerHTML = opciones(proveedores, { vacio: 'Selecciona…', seleccionado: p.id });
     e.target.reset();
     activarFormularioTercero(e.target);
-    cardProv.hidden = true;
-    toast(`Proveedor "${p.nombre}" creado`, 'ok');
-    calcular();
+    usarTercero(p);
   });
 
   alEnviar(form, async () => {
