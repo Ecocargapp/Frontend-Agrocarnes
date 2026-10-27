@@ -66,6 +66,7 @@ export async function catalogo(nombre, force = false) {
     productos: '/productos',
     proveedores: '/terceros?tipo=proveedor',
     clientes: '/terceros?tipo=cliente',
+    vendedores: '/vendedores',
   };
   const data = await api(rutas[nombre]);
   cache.set(nombre, data);

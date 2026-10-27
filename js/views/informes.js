@@ -7,6 +7,7 @@ import { html, esc, cop, dia, toast, opciones, tabla, badge, alEnviar, datosForm
 const INFORMES = [
   ['venta-diaria', 'Venta diaria'],
   ['ventas-cliente', 'Ventas por cliente'],
+  ['ventas-vendedor', 'Ventas por vendedor'],
   ['resultados', 'Estado de resultados'],
   ['balance', 'Balance general'],
   ['iva', 'IVA e INC a pagar'],
@@ -47,6 +48,7 @@ export async function vistaInformes(root, params) {
         <label class="w-fecha" id="lbl-desde"><span>Desde</span><input type="date" id="i-desde" value="${inicioMes()}" /></label>
         <label class="w-fecha"><span id="lbl-hasta">Hasta</span><input type="date" id="i-hasta" value="${hoyBogota()}" /></label>
         <label id="lbl-cliente" hidden><span>Cliente (nombre o NIT)</span><input id="i-cliente" placeholder="Todos" /></label>
+        <label id="lbl-vendedor" hidden><span>Vendedor</span><select id="i-vendedor"></select></label>
         <button type="button" class="btn-secondary w-sm" id="btn-excel">Excel</button>
         <button type="button" class="btn-secondary w-sm" id="btn-imprimir">Imprimir</button>
       </div>
@@ -130,6 +132,68 @@ export async function vistaInformes(root, params) {
           vacio: 'No hay ventas en el rango.',
         })}
         ${t.ventas_internas ? `<p class="muted">Además hubo ventas internas entre centros de costo por ${cop(t.ventas_internas)} (no incluidas arriba).</p>` : ''}`;
+    },
+
+    async 'ventas-vendedor'() {
+      const p = new URLSearchParams(q());
+      const vend = root.querySelector('#i-vendedor').value;
+      if (vend) p.set('vendedor_id', vend);
+      datos = await api(`/informes/ventas-vendedor?${p}`);
+      const t = datos.totales;
+      const pctTxt = (n) => `${Number(n).toLocaleString('es-CO', { maximumFractionDigits: 2 })}%`;
+      return html`
+        <div class="kpis">
+          <div><span>Ventas (con impuestos)</span><b>${cop(t.total)}</b></div>
+          <div><span>Base sin impuestos</span><b>${cop(t.base)}</b></div>
+          <div><span>Notas crédito (base)</span><b>${cop(t.devoluciones)}</b></div>
+          <div><span>Base neta</span><b>${cop(t.base_neta)}</b></div>
+          <div><span>Comisiones a pagar</span><b>${cop(t.comision)}</b></div>
+        </div>
+        <h3>Resumen por vendedor</h3>
+        ${tabla({
+          columnas: [
+            { titulo: 'Vendedor', render: (g) => `${esc(g.vendedor)}${g.documento ? ` <span class="muted">${esc(g.documento)}</span>` : ''}` },
+            { titulo: 'Facturas', num: true, campo: 'facturas' },
+            { titulo: 'Total', num: true, render: (g) => cop(g.total) },
+            { titulo: 'Base', num: true, render: (g) => cop(g.base) },
+            { titulo: 'Notas crédito', num: true, render: (g) => cop(g.devoluciones) },
+            { titulo: 'Base neta', num: true, render: (g) => `<b>${cop(g.base_neta)}</b>` },
+            { titulo: '% de ventas', num: true, render: (g) => (t.base_neta ? pctTxt(g.base_neta / t.base_neta * 100) : '') },
+            { titulo: 'Recaudado', num: true, render: (g) => cop(g.recaudado) },
+            { titulo: 'Por cobrar', num: true, render: (g) => cop(g.saldo) },
+            { titulo: '% com.', num: true, render: (g) => (g.vendedor_id ? pctTxt(g.comision_pct) : '—') },
+            { titulo: 'Comisión', num: true, render: (g) => `<b>${g.vendedor_id ? cop(g.comision) : '—'}</b>` },
+          ],
+          filas: datos.vendedores,
+          vacio: 'No hay ventas en el rango.',
+        })}
+        <p class="muted">Comisión = base neta (sin IVA/INC, menos notas crédito del periodo) × % del vendedor. No incluye facturas anuladas ni ventas internas. "Recaudado" sirve si la comisión se paga sobre lo cobrado.</p>
+        <h3 style="margin-top:18px">Detalle de facturas</h3>
+        ${tabla({
+          columnas: [
+            { titulo: 'Día', render: (f) => dia(f.dia) },
+            { titulo: 'Factura', render: (f) => `<span class="mono">${esc(f.consecutivo || '—')}</span>` },
+            { titulo: 'Vendedor', campo: 'vendedor' },
+            { titulo: 'Cliente', campo: 'cliente' },
+            { titulo: 'Pago', render: (f) => (f.forma_pago === 'credito' ? 'Crédito' : 'Contado') },
+            { titulo: 'Total', num: true, render: (f) => cop(f.total) },
+            { titulo: 'Base', num: true, render: (f) => cop(f.base) },
+            { titulo: 'Saldo', num: true, render: (f) => (Number(f.saldo) > 0 ? cop(f.saldo) : '—') },
+          ],
+          filas: datos.facturas,
+          vacio: 'Sin facturas.',
+        })}
+        ${datos.notas_credito.length ? html`<h3 style="margin-top:18px">Notas crédito descontadas</h3>${tabla({
+          columnas: [
+            { titulo: 'Día', render: (n) => dia(n.dia) },
+            { titulo: 'Nota', render: (n) => `<span class="mono">${esc(n.consecutivo || '—')}</span>` },
+            { titulo: 'Factura', render: (n) => `<span class="mono">${esc(n.factura || '')}</span>` },
+            { titulo: 'Vendedor', campo: 'vendedor' },
+            { titulo: 'Total', num: true, render: (n) => cop(n.total) },
+            { titulo: 'Base', num: true, render: (n) => cop(n.base) },
+          ],
+          filas: datos.notas_credito,
+        })}` : ''}`;
     },
 
     async 'ventas-cliente'() {
@@ -353,6 +417,15 @@ export async function vistaInformes(root, params) {
   // ------------------------------------------------------------- Excel por informe
   const filas = (pares) => pares.map(([concepto, valor]) => ({ concepto, valor }));
   const EXCEL = {
+    'ventas-vendedor': () => ({
+      columnas: [
+        { titulo: 'Vendedor', campo: 'vendedor', ancho: 28 }, { titulo: 'Cédula', campo: 'documento', ancho: 14 }, { titulo: 'Facturas', campo: 'facturas', ancho: 9 },
+        { titulo: 'Total con impuestos', campo: 'total' }, { titulo: 'Base sin impuestos', campo: 'base' }, { titulo: 'Notas crédito (base)', campo: 'devoluciones' },
+        { titulo: 'Base neta', campo: 'base_neta' }, { titulo: 'Recaudado', campo: 'recaudado' }, { titulo: 'Por cobrar', campo: 'saldo' },
+        { titulo: '% comisión', campo: 'comision_pct', ancho: 10 }, { titulo: 'Comisión', campo: 'comision' },
+      ],
+      filas: [...datos.vendedores, { vendedor: 'TOTAL', ...datos.totales }],
+    }),
     'ventas-cliente': () => ({
       columnas: [
         { titulo: 'Día', campo: 'dia', ancho: 11 }, { titulo: 'Cliente', campo: 'cliente', ancho: 34 }, { titulo: 'Documento', campo: 'documento', ancho: 14 },
@@ -399,6 +472,7 @@ export async function vistaInformes(root, params) {
     root.querySelector('#lbl-nit').hidden = actual !== 'diario';
     root.querySelector('#lbl-nivel').hidden = actual !== 'prueba';
     root.querySelector('#lbl-cliente').hidden = actual !== 'ventas-cliente';
+    root.querySelector('#lbl-vendedor').hidden = actual !== 'ventas-vendedor';
     try { localStorage.setItem('informe_actual', actual); localStorage.setItem('informe_empresa', selEmpresa.value); } catch { /* sin storage */ }
     cont.innerHTML = '<p class="muted">Calculando…</p>';
     try {
@@ -410,7 +484,12 @@ export async function vistaInformes(root, params) {
 
   root.querySelectorAll('[data-informe]').forEach((b) => b.addEventListener('click', () => { actual = b.dataset.informe; mostrar(); }));
   [selEmpresa, inDesde, inHasta, root.querySelector('#i-nivel')].forEach((el) => el.addEventListener('change', mostrar));
-  ['#i-cuenta', '#i-nit', '#i-cliente'].forEach((s) => root.querySelector(s).addEventListener('change', mostrar));
+  ['#i-cuenta', '#i-nit', '#i-cliente', '#i-vendedor'].forEach((s) => root.querySelector(s).addEventListener('change', mostrar));
+  if (esAdmin) {
+    api('/vendedores?todos=1').then((vs) => {
+      root.querySelector('#i-vendedor').innerHTML = `<option value="">Todos</option>${opciones(vs, { texto: (v) => `${v.nombre}${v.activo ? '' : ' (inactivo)'}` })}<option value="sin">Sin vendedor</option>`;
+    }).catch(() => {});
+  }
   root.querySelector('#btn-imprimir').addEventListener('click', () => window.print());
   root.querySelector('#btn-excel').addEventListener('click', () => {
     if (!datos) return;

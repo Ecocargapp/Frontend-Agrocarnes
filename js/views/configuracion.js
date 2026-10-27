@@ -153,6 +153,25 @@ export async function vistaConfiguracion(root) {
         <div id="lista-cuentas-pago"></div>
       </div>
     </div>
+    <div class="card">
+      <h2>Vendedores</h2>
+      <p class="muted">Se eligen al facturar en Ventas. El informe "Ventas por vendedor" (Informes) calcula la comisión con el % de cada uno sobre la venta sin IVA/INC, descontando notas crédito. Un vendedor no se borra: se desactiva y conserva su histórico.</p>
+      <div class="grid">
+        <form id="form-vendedor">
+          <label><span>Nombre</span><input name="nombre" required /></label>
+          <div class="row">
+            <label><span>Cédula</span><input name="documento" placeholder="Opcional" /></label>
+            <label><span>Teléfono</span><input name="telefono" placeholder="Opcional" /></label>
+          </div>
+          <div class="row">
+            <label><span>Empresa</span><select name="empresa_id">${opciones(empresas, { vacio: 'Todas las empresas' })}</select></label>
+            <label class="w-sm"><span>% comisión</span><input type="number" name="comision_pct" step="0.01" min="0" max="100" value="0" /></label>
+          </div>
+          <button type="submit" class="btn-primary">Agregar vendedor</button>
+        </form>
+        <div id="lista-vendedores"></div>
+      </div>
+    </div>
   `;
 
   const selEmpresa = root.querySelector('#p-empresa');
@@ -392,6 +411,48 @@ export async function vistaConfiguracion(root) {
     await cargarCuentasPago();
   });
   cargarCuentasPago();
+
+  // ----------------------------------------------------------------- vendedores
+  async function cargarVendedores() {
+    const vendedores = await api('/vendedores?todos=1');
+    root.querySelector('#lista-vendedores').innerHTML = tabla({
+      columnas: [
+        { titulo: 'Vendedor', render: (v) => `${esc(v.nombre)}${v.documento ? `<br><span class="muted">C.C. ${esc(v.documento)}</span>` : ''}${v.telefono ? ` <span class="muted">· ${esc(v.telefono)}</span>` : ''}` },
+        { titulo: 'Empresa', render: (v) => esc(v.empresa || 'Todas') },
+        { titulo: '% comisión', num: true, render: (v) => `<input class="w-xs" type="number" step="0.01" min="0" max="100" value="${Number(v.comision_pct)}" data-vend-pct="${v.id}" /> <button type="button" class="btn-link" data-vend-guardar="${v.id}">Guardar</button>` },
+        { titulo: 'Estado', render: (v) => badge(v.activo ? 'Activo' : 'Inactivo', v.activo ? 'ok' : '') },
+        { titulo: '', render: (v) => `<button type="button" class="btn-link" data-vend-id="${v.id}" data-activo="${v.activo}">${v.activo ? 'Desactivar' : 'Activar'}</button>` },
+      ],
+      filas: vendedores,
+      vacio: 'Todavía no hay vendedores.',
+      filaAttrs: (v) => (v.activo ? '' : 'class="anulado"'),
+    });
+  }
+  root.querySelector('#lista-vendedores').addEventListener('click', async (e) => {
+    const act = e.target.closest('[data-vend-id]');
+    const guardar = e.target.closest('[data-vend-guardar]');
+    if (!act && !guardar) return;
+    try {
+      if (act) {
+        await api(`/vendedores/${act.dataset.vendId}`, { method: 'PATCH', body: { activo: act.dataset.activo !== 'true' } });
+      } else {
+        const pct = root.querySelector(`[data-vend-pct="${guardar.dataset.vendGuardar}"]`).value;
+        await api(`/vendedores/${guardar.dataset.vendGuardar}`, { method: 'PATCH', body: { comision_pct: Number(pct) || 0 } });
+        toast('% de comisión actualizado', 'ok');
+      }
+      invalidar('vendedores');
+      await cargarVendedores();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+  alEnviar(root.querySelector('#form-vendedor'), async (e) => {
+    const d = datosForm(e.target);
+    const v = await api('/vendedores', { method: 'POST', body: { ...d, empresa_id: d.empresa_id || null, comision_pct: Number(d.comision_pct) || 0 } });
+    invalidar('vendedores');
+    toast(`Vendedor "${v.nombre}" agregado`, 'ok');
+    e.target.reset();
+    await cargarVendedores();
+  });
+  cargarVendedores();
 
   await cargarTodo();
 }

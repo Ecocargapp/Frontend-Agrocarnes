@@ -1,4 +1,4 @@
-import { api, apiArchivo, catalogo, invalidar } from '../api.js';
+import { api, apiArchivo, catalogo, invalidar, session } from '../api.js';
 import { selectorPago } from '../pago-widget.js';
 import { formularioTercero, activarFormularioTercero, leerTercero, bloqueExistente, activarExistente, COLUMNAS_PLANTILLA } from '../tercero-form.js';
 import { html, esc, num, cop, fecha, dia, hoy, toast, opciones, tabla, badge, datosForm, alEnviar, descargarExcel } from '../ui.js';
@@ -11,7 +11,8 @@ const botonAnularFactura = (f) => (f.estado === 'anulada' ? '' : botonAnular(esE
 const ESTADO = { pendiente: 'warn', enviada: 'warn', aceptada: 'ok', rechazada: 'danger', error: 'danger', sin_configurar: '', contingencia: 'warn', no_aplica: '' };
 
 export async function vistaVentas(root) {
-  const [bodegas, clientes] = await Promise.all([catalogo('bodegas'), catalogo('clientes')]);
+  const [bodegas, clientes, vendedores] = await Promise.all([catalogo('bodegas'), catalogo('clientes'), catalogo('vendedores')]);
+  const esAdmin = session.usuario?.rol === 'admin';
 
   root.innerHTML = html`
     <div class="page-head">
@@ -30,6 +31,12 @@ export async function vistaVentas(root) {
               <div class="row">
                 <select id="v-cliente">${opciones(clientes, { vacio: 'Consumidor final' })}</select>
                 <button type="button" class="btn-secondary w-sm" id="btn-nuevo-cli">+ Nuevo</button>
+              </div>
+            </label>
+            <label><span>Vendedor</span>
+              <div class="row">
+                <select id="v-vendedor"></select>
+                ${esAdmin ? '<button type="button" class="btn-secondary w-sm" id="btn-nuevo-vend">+ Nuevo</button>' : ''}
               </div>
             </label>
             <div class="row">
@@ -66,6 +73,23 @@ export async function vistaVentas(root) {
             </div>
           </form>
         </div>
+        <div class="card" id="card-vend" hidden>
+          <h2>Nuevo vendedor</h2>
+          <form id="form-vend">
+            <label><span>Nombre</span><input name="nombre" required /></label>
+            <div class="row">
+              <label><span>Cédula</span><input name="documento" placeholder="Opcional" /></label>
+              <label><span>Teléfono</span><input name="telefono" placeholder="Opcional" /></label>
+              <label class="w-sm"><span>% comisión</span><input type="number" name="comision_pct" step="0.01" min="0" max="100" value="0" /></label>
+            </div>
+            <label class="check"><input type="checkbox" name="solo_empresa" value="true" checked /> Solo para la empresa de este punto de venta</label>
+            <div class="row">
+              <button type="submit" class="btn-primary">Guardar vendedor</button>
+              <button type="button" class="btn-secondary" id="btn-cancelar-vend">Cancelar</button>
+            </div>
+            <p class="muted">Para editar el % de comisión o desactivar un vendedor: Configuración → Vendedores.</p>
+          </form>
+        </div>
         <div class="card" id="card-cli" hidden>
           <h2>Nuevo cliente</h2>
           ${bloqueExistente('cliente')}
@@ -96,6 +120,17 @@ export async function vistaVentas(root) {
   const selBodega = root.querySelector('#v-bodega');
   const selCliente = root.querySelector('#v-cliente');
   const selFormaPago = root.querySelector('#v-forma-pago');
+  const selVendedor = root.querySelector('#v-vendedor');
+  const claveVendedor = () => `venta_vendedor_${selBodega.value}`;
+  // Vendedores activos de la empresa del punto de venta (o de todas); se recuerda el último usado en cada punto.
+  function pintarVendedores(seleccionado) {
+    const emp = bodegas.find((b) => b.id === selBodega.value)?.empresa_id;
+    const lista = vendedores.filter((v) => v.activo !== false && (!v.empresa_id || v.empresa_id === emp));
+    let previo = seleccionado;
+    if (previo === undefined) { try { previo = localStorage.getItem(claveVendedor()); } catch { previo = null; } }
+    selVendedor.innerHTML = opciones(lista, { vacio: 'Sin vendedor', seleccionado: previo });
+  }
+  selVendedor.addEventListener('change', () => { try { localStorage.setItem(claveVendedor(), selVendedor.value); } catch { /* sin storage */ } });
   const items = root.querySelector('#v-items');
   const totalEl = root.querySelector('#v-total');
   let existencias = [];
@@ -110,6 +145,7 @@ export async function vistaVentas(root) {
 
   async function cargarBodega() {
     localStorage.setItem('venta_bodega', selBodega.value);
+    pintarVendedores();
     const bodega = bodegas.find((b) => b.id === selBodega.value);
     const [stock, productos] = await Promise.all([
       api(`/inventario/existencias?bodega_id=${selBodega.value}`),
@@ -167,6 +203,7 @@ export async function vistaVentas(root) {
         { titulo: 'Fecha', render: (v) => fecha(v.fecha) },
         { titulo: 'Empresa', campo: 'empresa' },
         { titulo: 'Cliente', render: (v) => esc(v.cliente || 'Consumidor final') },
+        { titulo: 'Vendedor', render: (v) => (v.vendedor ? esc(v.vendedor) : '<span class="muted">—</span>') },
         { titulo: 'Pago', render: (v) => badge(v.forma_pago === 'credito' ? 'Crédito' : 'Contado', v.forma_pago === 'credito' ? 'warn' : 'ok') },
         { titulo: 'Total', num: true, render: (v) => cop(v.total) },
         { titulo: 'Saldo', num: true, render: (v) => (Number(v.saldo) > 0 ? cop(v.saldo) : '—') },
@@ -184,7 +221,7 @@ export async function vistaVentas(root) {
     const f = await api(`/ventas/${id}`);
     root.querySelector('#titulo-detalle').textContent = `Factura ${f.consecutivo || ''} · ${f.empresa}`;
     root.querySelector('#detalle').innerHTML = html`
-      <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} ·
+      <p class="muted">${esc(fecha(f.fecha))} · Cliente: ${esc(f.cliente || 'Consumidor final')} · Vendedor: ${esc(f.vendedor || 'sin vendedor')} ·
         Pago: ${badge(f.forma_pago === 'credito' ? 'Crédito' : 'Contado', f.forma_pago === 'credito' ? 'warn' : 'ok')}
         ${f.forma_pago === 'credito' ? ` · Vence: ${esc(dia(f.fecha_vencimiento))} · Saldo: ${cop(f.saldo)}` : ''}
         ${f.estado === 'anulada' ? ` · ${badge('Anulada', 'danger')}` : ''} · DIAN: ${f.venta_interna ? badge('Venta interna · no aplica', '') : badge(f.estado_dian, ESTADO[f.estado_dian] || '')}${f.arco_factura_id ? ` · Arco #${esc(f.arco_factura_id)}` : ''}
@@ -198,6 +235,13 @@ export async function vistaVentas(root) {
         ${f.arco_factura_id && f.estado_dian !== 'aceptada' ? `<button type="button" class="btn-secondary" data-dian="estado" data-id="${f.id}">Actualizar estado</button>` : ''}
         ${f.estado !== 'anulada' ? `<a class="btn-secondary" style="display:inline-block;text-decoration:none" href="#notas-credito?factura=${f.id}">Nota crédito</a> ${botonAnularFactura(f)}` : ''}
       </p>
+      ${esAdmin && f.estado !== 'anulada' ? html`
+      <div class="row" style="align-items:flex-end">
+        <label><span>Cambiar vendedor (solo afecta comisiones)</span>
+          <select data-vendedor-factura>${opciones(vendedores.filter((v) => v.activo !== false && (!v.empresa_id || v.empresa_id === f.empresa_id)), { vacio: 'Sin vendedor', seleccionado: f.vendedor_id })}</select>
+        </label>
+        <button type="button" class="btn-secondary w-sm" data-guardar-vendedor="${f.id}">Guardar</button>
+      </div>` : ''}
       ${tabla({
         columnas: [
           { titulo: 'Producto', campo: 'producto' },
@@ -233,6 +277,16 @@ export async function vistaVentas(root) {
       } finally {
         pdf.disabled = false;
       }
+      return;
+    }
+    const gv = e.target.closest('button[data-guardar-vendedor]');
+    if (gv) {
+      gv.disabled = true;
+      try {
+        await api(`/ventas/${gv.dataset.guardarVendedor}/vendedor`, { method: 'PATCH', body: { vendedor_id: root.querySelector('[data-vendedor-factura]').value || null } });
+        toast('Vendedor actualizado', 'ok');
+        await Promise.all([cargarLista(), verDetalle(gv.dataset.guardarVendedor)]);
+      } catch (err) { toast(err.message, 'error'); gv.disabled = false; }
       return;
     }
     const btn = e.target.closest('button[data-dian]');
@@ -278,6 +332,27 @@ export async function vistaVentas(root) {
     usarTercero(c);
   });
 
+  const cardVend = root.querySelector('#card-vend');
+  if (esAdmin) {
+    root.querySelector('#btn-nuevo-vend').addEventListener('click', () => { cardVend.hidden = false; cardVend.querySelector('input').focus(); });
+    root.querySelector('#btn-cancelar-vend').addEventListener('click', () => { cardVend.hidden = true; });
+    alEnviar(root.querySelector('#form-vend'), async (e) => {
+      const d = datosForm(e.target);
+      const empresaId = bodegas.find((b) => b.id === selBodega.value)?.empresa_id;
+      const v = await api('/vendedores', {
+        method: 'POST',
+        body: { nombre: d.nombre, documento: d.documento, telefono: d.telefono, comision_pct: Number(d.comision_pct) || 0, empresa_id: d.solo_empresa === 'true' ? empresaId : null },
+      });
+      invalidar('vendedores');
+      vendedores.push(v);
+      e.target.reset();
+      cardVend.hidden = true;
+      pintarVendedores(v.id);
+      try { localStorage.setItem(claveVendedor(), v.id); } catch { /* sin storage */ }
+      toast(`Vendedor "${v.nombre}" creado (${Number(v.comision_pct).toLocaleString('es-CO')} % de comisión)`, 'ok');
+    });
+  }
+
   alEnviar(form, async () => {
     const lineas = leerLineas();
     if (!lineas.length) throw new Error('Agrega al menos un producto');
@@ -292,7 +367,7 @@ export async function vistaVentas(root) {
     const r = await api('/ventas', {
       method: 'POST',
       body: {
-        empresa_id: bodega.empresa_id, bodega_id: bodega.id, cliente_id: selCliente.value || null, items: lineas,
+        empresa_id: bodega.empresa_id, bodega_id: bodega.id, cliente_id: selCliente.value || null, vendedor_id: selVendedor.value || null, items: lineas,
         forma_pago: d.forma_pago, venta_interna: d.venta_interna === 'true',
         ...(d.forma_pago === 'credito' ? { dias_plazo: Number(d.dias_plazo) || 30 } : (({ medio_pago, cuenta_pago_id, referencia }) => ({ medio_pago, cuenta_pago_id, referencia_pago: referencia }))(pago.leer())),
       },
@@ -316,6 +391,7 @@ export async function vistaVentas(root) {
         { titulo: 'Factura', campo: 'consecutivo', ancho: 14 },
         { titulo: 'Empresa', campo: 'empresa', ancho: 14 },
         { titulo: 'Cliente', campo: 'cliente', ancho: 22 },
+        { titulo: 'Vendedor', valor: (v) => v.vendedor || '', ancho: 20 },
         { titulo: 'Forma de pago', valor: (v) => (v.forma_pago === 'credito' ? 'Crédito' : 'Contado'), ancho: 13 },
         { titulo: 'Medio de pago', valor: (v) => v.medio_pago || (v.forma_pago === 'credito' ? 'Pendiente' : ''), ancho: 15 },
         { titulo: 'Total', valor: (v) => Number(v.total), ancho: 14 },
