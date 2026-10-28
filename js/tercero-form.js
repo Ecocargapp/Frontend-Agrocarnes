@@ -3,6 +3,32 @@
 // (Template-7580.xlsx). Lo usan Ventas (clientes) y Compras (proveedores).
 import { html, esc } from './ui.js';
 
+// Dígito de verificación de un NIT (algoritmo DIAN, módulo 11). Igual al del servidor.
+export function digitoVerificacion(nit) {
+  const n = String(nit || '').replace(/\D/g, '');
+  if (!n) return '';
+  const pesos = [3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71];
+  let suma = 0;
+  for (let i = 0; i < n.length && i < pesos.length; i++) suma += Number(n[n.length - 1 - i]) * pesos[i];
+  const r = suma % 11;
+  return String(r > 1 ? 11 - r : r);
+}
+
+// Revisa el número según el tipo de documento: { error } o { aviso } (DV calculado).
+export function revisarDocumento(tipo, valor) {
+  const n = String(valor || '').replace(/[.,\s]/g, '');
+  if (!n) return {};
+  if (tipo === 'NIT') {
+    if (n.includes('-')) return { error: `Sin dígito de verificación: escribe ${n.split('-')[0]}` };
+    if (!/^\d+$/.test(n)) return { error: 'Solo números' };
+    if (n.length < 6 || n.length > 10) return { error: 'El NIT debe tener entre 6 y 10 dígitos, sin DV' };
+    if (n.length === 10 && /^[89]/.test(n) && digitoVerificacion(n.slice(0, 9)) === n[9]) return { error: `Parece que incluye el DV al final: escribe ${n.slice(0, 9)}` };
+    return { aviso: `DV calculado: ${digitoVerificacion(n)} → ${n}-${digitoVerificacion(n)}` };
+  }
+  if (['CC', 'TI', 'RC', 'CE', 'TE'].includes(tipo) && !/^\d{5,12}$/.test(n)) return { error: 'Solo números, entre 5 y 12 dígitos' };
+  return {};
+}
+
 const opt = (pares, sel) => pares.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(sel ?? '') ? 'selected' : ''}>${esc(t)}</option>`).join('');
 
 export const TIPOS_DOCUMENTO = [
@@ -38,7 +64,8 @@ export function formularioTercero(t = {}, { rol = 'cliente' } = {}) {
         <select name="tipo_persona" data-tercero="persona">${opt([['natural', '1 · Natural'], ['juridica', '0 · Jurídica']], persona)}</select>
       </label>
       <label><span>Tipo documento</span><select name="tipo_documento">${opt(TIPOS_DOCUMENTO, t.tipo_documento || (persona === 'juridica' ? 'NIT' : 'CC'))}</select></label>
-      <label><span>Número (sin DV)</span><input name="numero_documento" required inputmode="numeric" value="${esc(t.numero_documento || '')}" /></label>
+      <label><span>Número (sin DV)</span><input name="numero_documento" required inputmode="numeric" value="${esc(t.numero_documento || '')}" />
+        <small class="muted" data-dv></small></label>
     </div>
     <div data-solo="natural">
       <div class="row">
@@ -148,6 +175,20 @@ export function activarFormularioTercero(form, t = {}) {
   }
   selPersona.addEventListener('change', aplicar);
   aplicar();
+
+  // NIT sin dígito de verificación: muestra el DV calculado o el error al escribir.
+  const num = form.elements.numero_documento;
+  const tipoDoc = form.elements.tipo_documento;
+  const hint = form.querySelector('[data-dv]');
+  function revisar() {
+    const r = revisarDocumento(tipoDoc.value, num.value);
+    num.setCustomValidity(r.error || '');
+    if (hint) { hint.textContent = r.error || r.aviso || ''; hint.className = r.error ? 'error' : 'muted'; }
+  }
+  num.addEventListener('input', revisar);
+  tipoDoc.addEventListener('change', revisar);
+  selPersona.addEventListener('change', revisar);
+  revisar();
 }
 
 // Lee el formulario como objeto para POST/PUT /terceros.
