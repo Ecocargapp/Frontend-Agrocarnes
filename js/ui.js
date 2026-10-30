@@ -14,8 +14,17 @@ const fmtDia = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium' });
 export const cop = (v) => fmtCOP.format(Number(v) || 0);
 export const num = (v) => fmtNum.format(Number(v) || 0);
 export const fecha = (v) => (v ? fmtFecha.format(new Date(v)) : '');
-export const dia = (v) => (v ? fmtDia.format(new Date(v.length === 10 ? `${v}T12:00:00` : v)) : '');
-export const hoy = () => new Date().toISOString().slice(0, 10);
+// Las columnas DATE de Postgres llegan como "2026-10-30T00:00:00.000Z" (el
+// servidor trabaja en UTC). Convertidas a hora de Colombia caerían en el día
+// anterior (29/10 7 p. m.), así que se toma solo la fecha.
+const SOLO_FECHA = /^(\d{4}-\d{2}-\d{2})(T00:00:00(\.000)?Z)?$/;
+export const dia = (v) => {
+  if (!v) return '';
+  const m = SOLO_FECHA.exec(String(v));
+  return fmtDia.format(new Date(m ? `${m[1]}T12:00:00` : v));
+};
+// Fecha de hoy en Colombia (AAAA-MM-DD); con toISOString() después de las 7 p. m. salía mañana.
+export const hoy = () => new Date(Date.now() - 5 * 3600e3).toISOString().slice(0, 10);
 
 let toastTimer;
 export function toast(msg, tipo = '') {

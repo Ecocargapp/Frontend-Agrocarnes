@@ -434,7 +434,7 @@ export async function vistaInformes(root, params) {
       ],
       filas: datos.filas.map((f) => ({ ...f, dia: String(f.dia).slice(0, 10) })),
     }),
-    'venta-diaria': () => ({ columnas: ['dia', 'facturas', 'base', 'iva', 'inc', 'total', 'efectivo', 'transferencia', 'tarjeta', 'otro', 'credito'].map((c) => ({ titulo: c, valor: (d) => (c === 'dia' ? d.dia : d[c]) })), filas: datos.dias }),
+    'venta-diaria': () => ({ columnas: ['dia', 'facturas', 'base', 'iva', 'inc', 'total', 'efectivo', 'transferencia', 'tarjeta', 'otro', 'credito'].map((c) => ({ titulo: c, valor: (d) => (c === 'dia' ? String(d.dia).slice(0, 10) : d[c]) })), filas: datos.dias }),
     resultados: () => ({ columnas: [{ titulo: 'Concepto', campo: 'concepto' }, { titulo: 'Valor', campo: 'valor' }], filas: filas([
       ['Ventas', datos.ventas_brutas], ['Devoluciones', -datos.devoluciones], ['Ventas netas', datos.ventas_netas], ['Costo de ventas', -datos.costo_ventas],
       ['Utilidad bruta', datos.utilidad_bruta], ...datos.gastos_administracion.map((l) => [`${l.cuenta} ${l.nombre}`, -l.valor]),
