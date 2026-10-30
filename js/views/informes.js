@@ -105,7 +105,7 @@ export async function vistaInformes(root, params) {
   // ----------------------------------------------------------- renderizadores
   const R = {
     async 'venta-diaria'() {
-      datos = await api(`/informes/venta-diaria?${q()}`);
+      datos = await traer(`/informes/venta-diaria?${q()}`);
       const t = datos.totales;
       return html`
         <div class="kpis">
@@ -138,7 +138,7 @@ export async function vistaInformes(root, params) {
       const p = new URLSearchParams(q());
       const vend = root.querySelector('#i-vendedor').value;
       if (vend) p.set('vendedor_id', vend);
-      datos = await api(`/informes/ventas-vendedor?${p}`);
+      datos = await traer(`/informes/ventas-vendedor?${p}`);
       const t = datos.totales;
       const pctTxt = (n) => `${Number(n).toLocaleString('es-CO', { maximumFractionDigits: 2 })}%`;
       return html`
@@ -199,7 +199,7 @@ export async function vistaInformes(root, params) {
     async 'ventas-cliente'() {
       const p = new URLSearchParams(q());
       if (root.querySelector('#i-cliente').value.trim()) p.set('cliente', root.querySelector('#i-cliente').value.trim());
-      datos = await api(`/informes/ventas-cliente?${p}`);
+      datos = await traer(`/informes/ventas-cliente?${p}`);
       const t = datos.totales;
       // Detalle día por día con subtotal por día.
       let filasDia = ''; let diaActual = null; let sub = null;
@@ -244,7 +244,7 @@ export async function vistaInformes(root, params) {
     },
 
     async resultados() {
-      const d = datos = await api(`/informes/estado-resultados?${q()}`);
+      const d = datos = await traer(`/informes/estado-resultados?${q()}`);
       const det = (ls) => ls.map((l) => `<tr class="det"><td>${esc(l.cuenta)} · ${esc(l.nombre)}</td>${v(-l.valor)}<td class="pct"></td></tr>`).join('');
       const p = (x) => (d.ventas_netas ? (x / d.ventas_netas) * 100 : null);
       return html`
@@ -276,7 +276,7 @@ export async function vistaInformes(root, params) {
     },
 
     async balance() {
-      const d = datos = await api(`/informes/balance?empresa_id=${selEmpresa.value}&corte=${inHasta.value}`);
+      const d = datos = await traer(`/informes/balance?empresa_id=${selEmpresa.value}&corte=${inHasta.value}`);
       const ls = (arr) => arr.map((l) => `<tr class="det"><td>${esc(l.cuenta)} · ${esc(l.nombre)}</td>${v(l.valor)}</tr>`).join('');
       return html`
         <div class="grid">
@@ -297,7 +297,7 @@ export async function vistaInformes(root, params) {
     },
 
     async iva() {
-      const d = datos = await api(`/informes/iva?${q()}`);
+      const d = datos = await traer(`/informes/iva?${q()}`);
       return html`
         <div class="grid">
           <table class="informe">
@@ -327,7 +327,7 @@ export async function vistaInformes(root, params) {
     },
 
     async retenciones() {
-      const d = datos = await api(`/informes/retenciones?${q()}`);
+      const d = datos = await traer(`/informes/retenciones?${q()}`);
       const n = d.nos_practicaron;
       return html`
         <h3>Retenciones que practicamos (formulario 350, mensual)</h3>
@@ -364,7 +364,7 @@ export async function vistaInformes(root, params) {
     },
 
     async prueba() {
-      const d = datos = await api(`/informes/balance-prueba?${qLibro()}`);
+      const d = datos = await traer(`/informes/balance-prueba?${qLibro()}`);
       const clases = { 1: 'ACTIVO', 2: 'PASIVO', 3: 'PATRIMONIO', 4: 'INGRESOS', 5: 'GASTOS', 6: 'COSTOS DE VENTAS' };
       let filas = '';
       d.cuentas.forEach((c, i) => {
@@ -388,7 +388,7 @@ export async function vistaInformes(root, params) {
     },
 
     async diario() {
-      const d = datos = await api(`/informes/auxiliar?${qLibro()}`);
+      const d = datos = await traer(`/informes/auxiliar?${qLibro()}`);
       let filas = '';
       for (const c of d.cuentas) {
         filas += `<tr class="aux-cuenta"><td colspan="8">${esc(c.codigo)} - ${esc(c.nombre)}</td></tr>`;
@@ -464,6 +464,19 @@ export async function vistaInformes(root, params) {
       ])) }),
   };
 
+  // Cada cambio de filtro lanza una consulta; al escribir una fecha el navegador
+  // dispara varios cambios (ej. día "3" y luego "30"). Solo vale la respuesta de
+  // la última consulta: una anterior que llegue tarde se descarta, así no
+  // reemplaza en pantalla (ni en el Excel) el resultado del filtro actual.
+  let turno = 0;
+  const OBSOLETA = Symbol('consulta obsoleta');
+  async function traer(url) {
+    const mio = turno;
+    const r = await api(url);
+    if (mio !== turno) throw OBSOLETA;
+    return r;
+  }
+
   async function mostrar() {
     root.querySelectorAll('[data-informe]').forEach((b) => b.classList.toggle('active', b.dataset.informe === actual));
     root.querySelector('#lbl-desde').hidden = actual === 'balance';
@@ -474,16 +487,23 @@ export async function vistaInformes(root, params) {
     root.querySelector('#lbl-cliente').hidden = actual !== 'ventas-cliente';
     root.querySelector('#lbl-vendedor').hidden = actual !== 'ventas-vendedor';
     try { localStorage.setItem('informe_actual', actual); localStorage.setItem('informe_empresa', selEmpresa.value); } catch { /* sin storage */ }
+    const mio = ++turno;
     cont.innerHTML = '<p class="muted">Calculando…</p>';
     try {
-      cont.innerHTML = await R[actual]();
+      const contenido = await R[actual]();
+      if (mio === turno) cont.innerHTML = contenido;
     } catch (err) {
+      if (err === OBSOLETA || mio !== turno) return;
       cont.innerHTML = `<p class="error">${esc(err.message)}</p>`;
     }
   }
 
   root.querySelectorAll('[data-informe]').forEach((b) => b.addEventListener('click', () => { actual = b.dataset.informe; mostrar(); }));
-  [selEmpresa, inDesde, inHasta, root.querySelector('#i-nivel')].forEach((el) => el.addEventListener('change', mostrar));
+  // Las fechas esperan un momento a que se termine de escribir antes de consultar.
+  let espera = null;
+  const mostrarLuego = () => { clearTimeout(espera); espera = setTimeout(mostrar, 400); };
+  [selEmpresa, root.querySelector('#i-nivel')].forEach((el) => el.addEventListener('change', mostrar));
+  [inDesde, inHasta].forEach((el) => el.addEventListener('change', mostrarLuego));
   ['#i-cuenta', '#i-nit', '#i-cliente', '#i-vendedor'].forEach((s) => root.querySelector(s).addEventListener('change', mostrar));
   if (esAdmin) {
     api('/vendedores?todos=1').then((vs) => {
