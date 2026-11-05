@@ -1,5 +1,5 @@
 // Notas crédito sobre facturas de venta y anulación de facturas ya emitidas.
-import { api, catalogo } from '../api.js';
+import { api, apiArchivo, catalogo } from '../api.js';
 import { html, esc, num, cop, fecha, toast, opciones, tabla, badge, datosForm, alEnviar } from '../ui.js';
 
 const RAZONES = {
@@ -42,6 +42,10 @@ export async function vistaNotasCredito(root, params) {
           </label>
           <div id="lista-nc"></div>
         </div>
+        <div class="card" id="card-nc" hidden>
+          <h2 id="titulo-nc">Nota crédito</h2>
+          <div id="detalle-nc"></div>
+        </div>
       </div>
     </div>
   `;
@@ -60,12 +64,71 @@ export async function vistaNotasCredito(root, params) {
         { titulo: 'Cliente', campo: 'cliente' },
         { titulo: 'Razón', campo: 'razon_texto' },
         { titulo: 'Total', num: true, render: (n) => cop(n.total) },
-        { titulo: 'DIAN', render: (n) => badge(n.estado_dian === 'no_aplica' ? 'No aplica' : n.estado_dian, ESTADO[n.estado_dian] || '') },
+        { titulo: 'DIAN', render: (n) => badge(n.estado_dian === 'no_aplica' ? 'No aplica' : n.estado_dian, ESTADO[n.estado_dian] || '') + (n.dian_mensaje && ['error', 'rechazada'].includes(n.estado_dian) ? ` <span class="muted" title="${esc(n.dian_mensaje)}">ⓘ</span>` : '') },
       ],
       filas,
+      filaAttrs: (n) => `class="clickable" data-id="${esc(n.id)}"`,
       vacio: 'Todavía no se han registrado notas crédito.',
     });
   }
+
+  // Detalle de una nota: estado DIAN con el mensaje de error, reintento y PDF.
+  async function verNota(id) {
+    const card = root.querySelector('#card-nc');
+    card.hidden = false;
+    const n = await api(`/notas-credito/${id}`);
+    root.querySelector('#titulo-nc').textContent = `Nota crédito ${n.consecutivo || ''} · factura ${n.factura || ''}`;
+    const reenviable = ['pendiente', 'error', 'rechazada', 'sin_configurar'].includes(n.estado_dian);
+    root.querySelector('#detalle-nc').innerHTML = html`
+      <p class="muted">${esc(fecha(n.fecha))} · ${esc(n.empresa)} · ${esc(n.razon_texto || (n.razon === 2 ? 'Anulación' : ''))} · Total: ${cop(n.total)} ·
+        DIAN: ${badge(n.estado_dian === 'no_aplica' ? 'No aplica' : n.estado_dian, ESTADO[n.estado_dian] || '')}</p>
+      ${n.cufe ? `<p class="muted">CUFE: <span class="mono" style="word-break:break-all">${esc(n.cufe)}</span></p>` : ''}
+      ${n.dian_mensaje ? `<p class="${['error', 'rechazada'].includes(n.estado_dian) ? 'error' : 'muted'}" style="word-break:break-word">${esc(n.dian_mensaje)}</p>` : ''}
+      <p class="row" style="gap:8px">
+        ${n.cufe ? `<button type="button" class="btn-primary" data-nc-pdf="${n.id}">Ver / imprimir PDF</button>` : ''}
+        ${reenviable ? `<button type="button" class="btn-secondary" data-nc-dian="reenviar" data-id="${n.id}">Reintentar envío a la DIAN</button>` : ''}
+        ${n.estado_dian === 'enviada' && !n.cufe ? `<button type="button" class="btn-secondary" data-nc-dian="estado" data-id="${n.id}">Actualizar estado</button>` : ''}
+      </p>
+      ${n.items?.length ? tabla({
+        columnas: [
+          { titulo: 'Producto', campo: 'producto' },
+          { titulo: 'Cantidad', num: true, render: (l) => `${num(l.cantidad)} ${esc(l.unidad_medida || '')}` },
+          { titulo: 'Precio u.', num: true, render: (l) => cop(l.precio_unitario) },
+          { titulo: 'Subtotal', num: true, render: (l) => cop(Number(l.cantidad) * Number(l.precio_unitario)) },
+        ],
+        filas: n.items,
+      }) : ''}`;
+  }
+
+  root.querySelector('#lista-nc').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr[data-id]');
+    if (tr) verNota(tr.dataset.id).catch((err) => toast(err.message, 'error'));
+  });
+  root.querySelector('#detalle-nc').addEventListener('click', async (e) => {
+    const pdf = e.target.closest('button[data-nc-pdf]');
+    if (pdf) {
+      // La pestaña se abre antes del await para que el navegador no la bloquee.
+      const ventana = window.open('', '_blank');
+      if (ventana) ventana.document.write('<p style="font-family:sans-serif">Cargando la nota crédito…</p>');
+      pdf.disabled = true;
+      try {
+        const url = URL.createObjectURL(await apiArchivo(`/notas-credito/${pdf.dataset.ncPdf}/pdf`));
+        if (ventana) ventana.location = url; else window.location = url;
+      } catch (err) {
+        if (ventana) ventana.close();
+        toast(err.message, 'error');
+      } finally { pdf.disabled = false; }
+      return;
+    }
+    const btn = e.target.closest('button[data-nc-dian]');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      const r = await api(`/notas-credito/${btn.dataset.id}/dian${btn.dataset.ncDian === 'estado' ? '/estado' : ''}`, { method: 'POST' });
+      toast(r.estado === 'aceptada' ? 'Nota crédito aceptada por la DIAN' : `Estado: ${r.estado}${r.mensaje ? ` · ${r.mensaje}` : ''}`, r.estado === 'aceptada' ? 'ok' : '');
+      await Promise.all([cargarLista(), verNota(btn.dataset.id)]);
+    } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+  });
 
   async function cargarFactura(id) {
     if (!id) { detalleEl.innerHTML = ''; return; }
